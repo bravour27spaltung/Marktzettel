@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Marktzettel</title>
+<meta name="description" content="Gemeinsame Einkaufsliste und Rezeptsammlung für euren Haushalt, mit Sync und Benachrichtigungen.">
+<meta name="theme-color" content="#1B7A4B">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#EEF2EC; --surface:#FFFFFF; --ink:#16211B; --muted:#5B6B61; --line:#D5DDD3;
+  --accent:#1B7A4B; --accent-ink:#FFFFFF; --accent-soft:#DDEFE4; --saffron:#E9A21B;
+  --danger:#B3261E; --field:#F7F9F5;
+  --display:'Bricolage Grotesque','Avenir Next','Segoe UI',system-ui,sans-serif;
+  --body:'Figtree','Segoe UI',system-ui,-apple-system,sans-serif;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F1512; --surface:#18211C; --ink:#E7EFE9; --muted:#98A89E; --line:#2A3830;
+    --accent:#4CC48A; --accent-ink:#06170E; --accent-soft:#1D3327; --saffron:#F0B43E;
+    --danger:#F2867E; --field:#131B16;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F1512; --surface:#18211C; --ink:#E7EFE9; --muted:#98A89E; --line:#2A3830;
+  --accent:#4CC48A; --accent-ink:#06170E; --accent-soft:#1D3327; --saffron:#F0B43E;
+  --danger:#F2867E; --field:#131B16;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);height:100%}
+body{margin:0;color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;padding-inline:16px;-webkit-tap-highlight-color:transparent}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+img{max-width:100%}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.wrap{max-width:640px;margin-inline:auto;padding-block:14px 110px}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:6px 14px;position:sticky;top:0;background:var(--bg);z-index:6}
+.brand{font-family:var(--display);font-weight:800;font-size:1.65rem;letter-spacing:-.02em;line-height:1}
+.sync{display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--muted);font-weight:600;background:none;border:0;padding:6px 4px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none}
+.dot.off{background:var(--saffron)}
+h2{font-family:var(--display);font-weight:800;letter-spacing:-.015em;line-height:1.1;margin:0;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0}
+.banner{background:var(--accent-soft);border-radius:12px;padding:10px 14px;font-size:.88rem;margin-bottom:14px}
+.banner.warn{background:#F6E3C4;color:#3A2E14}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .banner.warn{background:#3A2E14;color:#F6E3C4}
+}
+:root[data-theme="dark"] .banner.warn{background:#3A2E14;color:#F6E3C4}
+
+/* Einkauf */
+.addbar{display:flex;gap:8px;position:sticky;top:56px;z-index:5;background:var(--bg);padding-block:6px 10px}
+.addbar input{flex:1;min-width:0;border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:13px 14px}
+.btn{border:0;border-radius:14px;padding:12px 18px;font-weight:700;background:var(--accent);color:var(--accent-ink);min-height:46px}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn.small{padding:8px 12px;min-height:38px;font-size:.88rem;border-radius:12px}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+.progress{display:flex;align-items:center;gap:10px;margin:4px 0 16px;font-size:.88rem;color:var(--muted);font-weight:600}
+.bar{flex:1;height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s}
+.group{margin-bottom:18px}
+.group>h3{padding-bottom:6px}
+.list{background:var(--surface);border-radius:16px;border:1px solid var(--line);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.chk{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--muted);background:transparent;display:grid;place-items:center;padding:0;color:var(--accent-ink)}
+.chk.on{background:var(--accent);border-color:var(--accent)}
+.chk svg{width:16px;height:16px;opacity:0}
+.chk.on svg{opacity:1}
+.grow{flex:1;min-width:0}
+.name{font-weight:600;overflow-wrap:anywhere}
+.done .name{text-decoration:line-through;color:var(--muted);font-weight:500}
+.meta{font-size:.78rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:1px}
+.qty{flex:none;font-variant-numeric:tabular-nums;font-weight:700;font-size:.9rem;background:var(--accent-soft);border-radius:8px;padding:3px 8px}
+.iconbtn{flex:none;border:0;background:transparent;color:var(--muted);width:36px;height:36px;border-radius:10px;display:grid;place-items:center;padding:0}
+.iconbtn svg{width:19px;height:19px}
+.empty{text-align:center;padding:36px 20px;color:var(--muted)}
+.empty b{display:block;font-family:var(--display);font-size:1.2rem;color:var(--ink);margin-bottom:4px}
+
+/* Rezepte */
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.head h2{font-size:1.5rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.card{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+.card .t{font-family:var(--display);font-weight:600;font-size:1.15rem;line-height:1.2;overflow-wrap:anywhere}
+.card .m{font-size:.84rem;color:var(--muted);margin-top:auto}
+.tag{display:inline-block;font-size:.74rem;font-weight:700;background:var(--accent-soft);border-radius:999px;padding:2px 9px}
+.tag.ex{background:transparent;border:1px dashed var(--saffron);color:var(--muted)}
+
+.detail h2{font-size:1.9rem;margin:6px 0 8px}
+.back{border:0;background:transparent;padding:8px 8px 8px 0;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:4px}
+.back svg{width:18px;height:18px}
+.stepper{display:inline-flex;align-items:center;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.stepper button{border:0;background:transparent;width:44px;height:44px;font-size:1.3rem;font-weight:700}
+.stepper span{min-width:110px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.section{margin-top:22px}
+.section>h3{margin-bottom:8px}
+.ing .row{cursor:pointer}
+.ing .row.onlist .name::after{content:" · auf der Liste";font-weight:500;font-size:.78rem;color:var(--accent)}
+.steps{counter-reset:s;list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.steps li{counter-increment:s;display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer}
+.steps li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent-soft);font-weight:700;font-size:.85rem;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.steps li.on{opacity:.5}
+.steps li.on span{text-decoration:line-through}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.sticky-cta{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:4;margin-top:16px}
+.sticky-cta .btn{width:100%;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.link{color:var(--accent);font-weight:600;overflow-wrap:anywhere}
+
+/* Formular */
+.form{display:grid;gap:14px}
+.field{display:grid;gap:5px}
+.field label{font-weight:700;font-size:.86rem}
+.field small{color:var(--muted)}
+.field input,.field textarea{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 12px;width:100%}
+.field textarea{min-height:120px;resize:vertical}
+.import{background:var(--accent-soft);border-radius:16px;padding:14px;display:grid;gap:10px}
+.import textarea{background:var(--field);min-height:90px}
+.two{display:grid;grid-template-columns:1fr 110px;gap:10px}
+
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));z-index:10}
+nav.tabs div{max-width:640px;margin-inline:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+nav.tabs button{border:0;background:transparent;border-radius:14px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:700;font-size:.78rem;color:var(--muted);position:relative}
+nav.tabs button svg{width:24px;height:24px}
+nav.tabs button.on{color:var(--accent);background:var(--accent-soft)}
+.badge{position:absolute;top:2px;left:calc(50% + 8px);background:var(--saffron);color:#1a1200;border-radius:999px;font-size:.68rem;padding:0 6px;min-width:18px;line-height:18px;text-align:center}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.9rem;font-weight:600;z-index:20;max-width:calc(100% - 32px)}
+
+/* Kategorien, Sheet */
+.sheet-backdrop{position:fixed;inset:0;background:rgba(10,14,11,.45);z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:640px;background:var(--surface);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;max-height:75vh;overflow:auto}
+.sheet-list{display:grid;gap:8px}
+.sheet-item{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;border:1.5px solid var(--line);background:var(--field);border-radius:12px;padding:12px 14px;font-weight:600}
+.sheet-item svg{width:17px;height:17px;color:var(--accent);flex:none}
+.sheet-item.on{border-color:var(--accent);background:var(--accent-soft)}
+.aisle-row{gap:8px}
+.aisle-name{flex:1;min-width:0;border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 11px;font-weight:600}
+.aisle-btns{display:flex;gap:4px;flex:none}
+.aisle-btns .iconbtn:disabled{opacity:.3}
+.hint{font-size:.86rem;color:var(--muted);margin:0 0 12px}
+
+/* Onboarding & Einstellungen */
+.onboard{min-height:calc(100vh - 28px);display:flex;flex-direction:column;justify-content:center;gap:22px;padding-block:24px}
+.onboard .brand{font-size:2.1rem}
+.choice{display:grid;gap:12px}
+.choice .card{gap:6px}
+.choice .card .t{font-size:1.05rem}
+.codebox{font-family:var(--display);font-weight:800;font-size:2rem;letter-spacing:.08em;background:var(--accent-soft);border-radius:14px;padding:16px;text-align:center;user-select:all}
+.settings-block{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;margin-bottom:16px}
+.settings-block .lbl{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.status-line{display:flex;align-items:center;gap:8px;font-size:.9rem}
+.status-line .dot{width:8px;height:8px}
+@media (prefers-reduced-motion:reduce){.bar>i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <header class="top">
+    <div class="brand">Marktzettel</div>
+    <button class="sync" id="sync" data-act="open-settings" aria-label="Einstellungen und Sync-Status"><span class="dot off"></span><span>Lädt…</span></button>
+  </header>
+  <div id="banner"></div>
+  <div id="addhost"></div>
+  <main id="main"></main>
+</div>
+<nav class="tabs" id="tabs" hidden><div>
+  <button id="tab-list" data-act="tab" data-tab="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>Einkauf<span class="badge" id="badge" hidden></span></button>
+  <button id="tab-rec" data-act="tab" data-tab="rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5V21.5M9 8h7M9 12h5"/></svg>Rezepte</button>
+</div></nav>
+<div id="toast" class="toast" hidden></div>
+<div id="sheethost"></div>
+
+<script src="./config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getMessaging, isSupported, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
+
+const CONFIG = window.MARKTZETTEL_CONFIG || {};
+const fb = CONFIG.firebase || {};
+const configured = !!(fb.apiKey && fb.projectId && String(fb.apiKey).indexOf('DEIN_') !== 0);
+
+let resolveReady;
+window.MZFirebaseReady = new Promise((res) => { resolveReady = res; });
+window.MZFirebase = {
+  configured,
+  db: null,
+  fns: { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc },
+  getFcmToken: async () => null,
+};
+
+(async () => {
+  if (!configured) { resolveReady({ ok: false, error: 'not_configured' }); return; }
+  let app, db;
+  try {
+    app = initializeApp(fb);
+    db = getFirestore(app);
+    window.MZFirebase.db = db;
+    resolveReady({ ok: true });
+  } catch (e) {
+    resolveReady({ ok: false, error: String(e) });
+    return;
+  }
+  try {
+    if (await isSupported()) {
+      const messaging = getMessaging(app);
+      window.MZFirebase.getFcmToken = async (reg) => {
+        try { return await getToken(messaging, { vapidKey: CONFIG.vapidKey, serviceWorkerRegistration: reg }); }
+        catch (e) { return null; }
+      };
+      onMessage(messaging, (payload) => {
+        const body = (payload.notification && payload.notification.body) || 'Liste aktualisiert';
+        if (window.MZOnPush) window.MZOnPush(body);
+      });
+    }
+  } catch (e) { /* Push ist optional */ }
+})();
+</script>
+
+<script>
+(function(){
+"use strict";
+const ICON={
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  tag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4v5l10.5 10.5a2 2 0 0 0 2.83 0l4.17-4.17a2 2 0 0 0 0-2.83z"/><circle cx="7.3" cy="7.3" r="1.15" fill="currentColor" stroke="none"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0"/></svg>'
+};
+const DEFAULT_AISLES=[
+  ['obst','Obst & Gemüse'],['brot','Backwaren'],['kuehl','Kühlregal'],['fleisch','Fleisch & Fisch'],
+  ['vorrat','Vorrat & Gewürze'],['getraenke','Getränke'],['haushalt','Haushalt'],['sonst','Sonstiges']
+].map(([key,label])=>({key,label}));
+// Reihenfolge zählt: spezifische Vorratsartikel vor Obst und Kühlregal. "*" = Wortende.
+const RULES=[
+  ['vorrat',['kokos','tomatenmark','passiert','nudel','pasta','spaghetti','penne','reis','mehl','zucker','*öl','essig','linsen','kichererbsen','bohnen','haferflocken','müsli','nuss','nüsse','mandel','salz','pfeffer','paprikapulver','kreuzkümmel','curry','zimt','brühe','sojasauce','honig','senf','ketchup','mayo','couscous','bulgur','backpulver','vanille','schokolade','gewürz','oregano','thymian','lorbeer','dose','tahini','cornflakes','semmelbrösel','stärke']],
+  ['getraenke',['wasser','saft','bier','wein','cola','kaffee','tee','limo','sekt']],
+  ['haushalt',['spülmittel','toilettenpapier','müllbeutel','waschmittel','küchenpapier','tabs','schwamm','zahnpasta','seife','alufolie','backpapier']],
+  ['brot',['brot','brötchen','toast','baguette','tortilla','fladen','croissant','wrap']],
+  ['fleisch',['hähnchen','hühnchen','huhn','rind','hack','schwein','lachs','fisch','wurst','schinken','speck','salami','garnele','thunfisch','pute','steak','filet']],
+  ['kuehl',['milch','joghurt','*käse','käse','butter','sahne','quark','ei','eier','mozzarella','parmesan','feta','schmand','frischkäse','skyr','margarine','tofu','creme','mascarpone','ricotta','hefe','halloumi']],
+  ['obst',['apfel','äpfel','banane','tomate','gurke','zwiebel','knoblauch','kartoffel','karotte','möhre','paprika','zitrone','salat','spinat','brokkoli','zucchini','pilz','champignon','lauch','ingwer','petersilie','basilikum','avocado','beere','orange','limette','kürbis','aubergine','sellerie','koriander','minze','dill','schnittlauch','chili','birne','traube','mango','ananas','rucola','kohl','fenchel','rosmarin','salbei','erbsen','mais']]
+];
+function aisleOf(name){
+  const toks=String(name).toLowerCase().split(/[^a-zäöüß]+/).filter(Boolean);
+  for(const [key,kws] of RULES){
+    for(const kw of kws){
+      const end=kw[0]==='*', k=end?kw.slice(1):kw;
+      for(const t of toks){ if(end? t.endsWith(k) : (k.length<=3 ? t===k||t===k+'er'||t===k+'e' : t.startsWith(k)) ) return key; }
+    }
+  }
+  return 'sonst';
+}
+const UNITS='gramm|liter|kg|mg|g|ml|cl|dl|l|el|tl|stk\\.?|stück|prisen?|prise|pck\\.?|packungen?|dosen?|bund|bündel|zehen?|scheiben?|becher|gläser|glas|handvoll';
+const LINE_RE=new RegExp('^(\\d+(?:[.,]\\d+)?(?:\\s*/\\s*\\d+)?|[½¼¾⅓⅔])\\s*(?:-\\s*\\d+(?:[.,]\\d+)?\\s*)?('+UNITS+')?(?=\\s|$)\\s*(.*)$','i');
+function toNum(s){
+  const map={'½':.5,'¼':.25,'¾':.75,'⅓':1/3,'⅔':2/3};
+  if(map[s]!=null) return map[s];
+  if(/\//.test(s)){const [a,b]=s.split('/').map(x=>parseFloat(x.replace(',','.')));return b?a/b:a;}
+  return parseFloat(s.replace(',','.'));
+}
+const UNIT_NORM={'gramm':'g','liter':'l','stk.':'Stk','stk':'Stk','stück':'Stk','el':'EL','tl':'TL','prisen':'Prise','prise':'Prise','pck.':'Pck','pck':'Pck','packung':'Pck','packungen':'Pck','dosen':'Dose','dose':'Dose','bund':'Bund','bündel':'Bund','zehen':'Zehe','zehe':'Zehe','scheiben':'Scheibe','scheibe':'Scheibe','gläser':'Glas','glas':'Glas','becher':'Becher','handvoll':'Handvoll'};
+function parseLine(raw){
+  let s=String(raw).replace(/^[\s\-•*·–]+/,'').trim();
+  if(!s) return null;
+  const m=LINE_RE.exec(s);
+  if(m && m[3] && m[3].trim()){
+    const q=toNum(m[1]); let u=(m[2]||'').toLowerCase();
+    u=UNIT_NORM[u]||u;
+    return {name:m[3].trim().replace(/^(von|an)\s+/i,''),qty:isFinite(q)?q:null,unit:u};
+  }
+  return {name:s,qty:null,unit:''};
+}
+function fmtNum(n){ return Number(n).toLocaleString('de-DE',{maximumFractionDigits:2}); }
+function fmtQty(q,u){ return q==null?'':(fmtNum(q)+(u?' '+u:'')); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function host(u){ try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return '';} }
+function safeUrl(u){ try{const x=new URL(u); return (x.protocol==='https:'||x.protocol==='http:')?x.href:'';}catch(e){return '';} }
+function uid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
+function randomCode(){
+  const abc='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne verwechselbare Zeichen
+  let s=''; for(let i=0;i<8;i++) s+=abc[Math.floor(Math.random()*abc.length)];
+  return s;
+}
+
+// ---------- Zustand ----------
+const S={
+  items:[],recipes:[],aisles:DEFAULT_AISLES.map(a=>({...a})),names:{},
+  code:null,deviceId:null,myName:'',pushEnabled:false,
+  catFor:null,tab:'list',view:{t:'onboard'},scale:null,pick:{},cooked:{},
+  live:false,confirmDel:false,dbOk:false
+};
+const $=id=>document.getElementById(id);
+let toastT=null;
+function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{t.hidden=true},3200);}
+window.MZOnPush=function(body){ toast(body); };
+
+// ---------- Lokale Identität ----------
+function loadIdentity(){
+  try{
+    S.code=localStorage.getItem('mz_code')||null;
+    S.deviceId=localStorage.getItem('mz_device')||null;
+    S.myName=localStorage.getItem('mz_name')||'';
+  }catch(e){}
+  if(!S.deviceId){ S.deviceId=uid()+uid(); try{localStorage.setItem('mz_device',S.deviceId);}catch(e){} }
+}
+function saveIdentity(){
+  try{
+    if(S.code) localStorage.setItem('mz_code',S.code);
+    localStorage.setItem('mz_name',S.myName||'');
+  }catch(e){}
+}
+
+// ---------- Firestore-Zugriff ----------
+let unsub=[];
+function basePath(){ return 'households/'+S.code; }
+function fsDoc(path){ const M=window.MZFirebase; return M.fns.doc(M.db, basePath()+'/'+path); }
+function fsCol(path){ const M=window.MZFirebase; return M.fns.collection(M.db, basePath()+'/'+path); }
+async function put(coll,id,data){ await window.MZFirebase.fns.setDoc(fsDoc(coll+'/'+id), data); }
+async function patch(coll,id,data){ await window.MZFirebase.fns.updateDoc(fsDoc(coll+'/'+id), data); }
+async function drop(coll,id){ await window.MZFirebase.fns.deleteDoc(fsDoc(coll+'/'+id)); }
+function safe(p){ return p.catch(e=>{ toast('Konnte nicht gespeichert werden. Bitte erneut versuchen.'); throw e; }).catch(()=>{}); }
+
+// ---------- Einkaufsliste ----------
+function normKey(n,u){ return String(n).toLowerCase().trim()+'|'+(u||'').toLowerCase(); }
+function resolveAisle(i){ const k=i&&i.aisle; return (k && S.aisles.some(a=>a.key===k)) ? k : 'sonst'; }
+async function addItem(p,recipeTitle){
+  const name=p.name.trim(); if(!name) return 'skip';
+  const key=normKey(name,p.unit);
+  const ex=S.items.find(i=>!i.done&&normKey(i.name,i.unit)===key);
+  if(ex){
+    const recipes=Array.from(new Set([...(ex.recipes||[]),...(recipeTitle?[recipeTitle]:[])]));
+    if(ex.qty!=null && p.qty!=null){
+      await patch('items',ex.id,{qty:Math.round((ex.qty+p.qty)*100)/100,recipes,by:S.deviceId}); return 'merged';
+    }
+    if(recipeTitle && recipes.length!==(ex.recipes||[]).length) await patch('items',ex.id,{recipes,by:S.deviceId});
+    return 'merged';
+  }
+  const id=uid();
+  const guess=aisleOf(name);
+  const aisle=S.aisles.some(a=>a.key===guess)?guess:'sonst';
+  await put('items',id,{name,qty:p.qty==null?null:p.qty,unit:p.unit||'',aisle,done:false,recipes:recipeTitle?[recipeTitle]:[],by:S.deviceId,at:Date.now()});
+  return 'added';
+}
+
+// ---------- Kategorien ----------
+function slugKey(label){
+  let base=label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  if(!base) base='kategorie';
+  let k=base,i=2; while(S.aisles.some(a=>a.key===k)){ k=base+'-'+(i++); }
+  return k;
+}
+async function saveAisles(){
+  if(S.dbOk){ await safe(put('meta','aisles',{list:S.aisles})); }
+  refresh(true);
+}
+function moveAisle(key,dir){
+  const ix=S.aisles.findIndex(a=>a.key===key); if(ix<0) return;
+  const nx=ix+dir; if(nx<0||nx>=S.aisles.length) return;
+  const t=S.aisles[ix]; S.aisles[ix]=S.aisles[nx]; S.aisles[nx]=t;
+  saveAisles();
+}
+async function deleteAisle(key){
+  if(key==='sonst') return;
+  const affected=S.items.filter(i=>i.aisle===key);
+  for(const it of affected){ await safe(patch('items',it.id,{aisle:'sonst'})); }
+  S.aisles=S.aisles.filter(a=>a.key!==key);
+  await saveAisles();
+}
+
+function renderList(){
+  const open=S.items.filter(i=>!i.done), done=S.items.filter(i=>i.done);
+  const total=S.items.length, pct=total?Math.round(done.length/total*100):0;
+  let h='<div style="text-align:right;margin:-4px 0 10px"><button class="btn ghost small" data-act="manage-aisles">Kategorien verwalten</button></div>';
+  if(!total){
+    h+='<div class="empty"><b>Die Liste ist leer</b>Tippe oben einen Artikel ein, zum Beispiel „2 kg Kartoffeln“, oder füge Zutaten aus einem Rezept hinzu.</div>';
+  } else {
+    h+='<div class="progress"><span>'+done.length+' von '+total+' erledigt</span><div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+  }
+  for(const a of S.aisles){
+    const g=open.filter(i=>resolveAisle(i)===a.key).sort((x,y)=>x.name.localeCompare(y.name,'de'));
+    if(!g.length) continue;
+    h+='<section class="group"><h3>'+esc(a.label)+'</h3><div class="list">'+g.map(rowHtml).join('')+'</div></section>';
+  }
+  if(done.length){
+    h+='<section class="group"><div class="head" style="margin-bottom:6px"><h3>Erledigt</h3><button class="btn ghost small" data-act="clear-done">Erledigte entfernen</button></div><div class="list">'+done.sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).map(rowHtml).join('')+'</div></section>';
+  }
+  return h;
+}
+function rowHtml(i){
+  const q=fmtQty(i.qty,i.unit);
+  const by=i.by&&S.names[i.by]&&i.by!==S.deviceId?('von '+esc(S.names[i.by])):'';
+  const rec=(i.recipes||[]).map(esc).join(', ');
+  const meta=[rec?('Rezept: '+rec):'',by].filter(Boolean).map(x=>'<span>'+x+'</span>').join('');
+  return '<div class="row'+(i.done?' done':'')+'">'+
+    '<button class="chk'+(i.done?' on':'')+'" data-act="toggle" data-id="'+esc(i.id)+'" aria-label="'+esc(i.name)+(i.done?' wieder öffnen':' abhaken')+'" aria-pressed="'+(!!i.done)+'">'+ICON.check+'</button>'+
+    '<div class="grow"><div class="name">'+esc(i.name)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
+    (q?'<span class="qty">'+esc(q)+'</span>':'')+
+    '<button class="iconbtn" data-act="cat-pmenu" data-id="'+esc(i.id)+'" aria-label="Kategorie für '+esc(i.name)+' ändern">'+ICON.tag+'</button>'+
+    '<button class="iconbtn" data-act="del-item" data-id="'+esc(i.id)+'" aria-label="'+esc(i.name)+' löschen">'+ICON.x+'</button></div>';
+}
+function renderAisleSettings(){
+  const rows=S.aisles.map((a,ix)=>{
+    const locked=a.key==='sonst';
+    return '<div class="row aisle-row">'+
+      '<input class="aisle-name" data-act="aisle-name" data-key="'+esc(a.key)+'" value="'+esc(a.label)+'" aria-label="Name der Kategorie">'+
+      '<div class="aisle-btns">'+
+        '<button class="iconbtn" data-act="aisle-up" data-key="'+esc(a.key)+'"'+(ix===0?' disabled':'')+' aria-label="Nach oben">'+ICON.up+'</button>'+
+        '<button class="iconbtn" data-act="aisle-down" data-key="'+esc(a.key)+'"'+(ix===S.aisles.length-1?' disabled':'')+' aria-label="Nach unten">'+ICON.down+'</button>'+
+        (locked?'':'<button class="iconbtn" data-act="aisle-del" data-key="'+esc(a.key)+'" aria-label="Kategorie löschen">'+ICON.x+'</button>')+
+      '</div></div>';
+  }).join('');
+  return '<button class="back" data-act="back">'+ICON.back+'Einkauf</button>'+
+    '<div class="head"><h2>Kategorien</h2></div>'+
+    '<p class="hint">Ordne, benenne um oder lösche Kategorien. „Sonstiges“ bleibt als Auffangkategorie erhalten und lässt sich nicht löschen.</p>'+
+    '<div class="list">'+rows+'</div>'+
+    '<form class="addbar" id="aisleaddform" style="margin-top:14px" autocomplete="off"><input id="aisleaddinp" placeholder="Neue Kategorie, z. B. Tiefkühl" aria-label="Neue Kategorie"><button class="btn" type="submit">Hinzufügen</button></form>';
+}
+function renderCatSheet(){
+  if(!S.catFor) return '';
+  const it=S.items.find(i=>i.id===S.catFor);
+  if(!it) return '';
+  const cur=resolveAisle(it);
+  return '<div class="sheet-backdrop" data-act="cat-close">'+
+    '<div class="sheet">'+
+      '<h3 style="margin-bottom:0">Kategorie</h3>'+
+      '<div class="meta">'+esc(it.name)+'</div>'+
+      '<div class="sheet-list">'+S.aisles.map(a=>'<button class="sheet-item'+(a.key===cur?' on':'')+'" data-act="cat-set" data-id="'+esc(it.id)+'" data-key="'+esc(a.key)+'">'+esc(a.label)+(a.key===cur?ICON.check:'')+'</button>').join('')+'</div>'+
+      '<button class="btn ghost small" data-act="cat-close">Abbrechen</button>'+
+    '</div></div>';
+}
+
+// ---------- Rezepte ----------
+function renderRecipes(){
+  let h='<div class="head"><h2>Rezepte</h2><button class="btn" data-act="new-recipe">Neues Rezept</button></div>';
+  if(!S.recipes.length){
+    h+='<div class="empty"><b>Noch keine Rezepte</b>Lege ein Rezept an oder füge den Text aus einem Instagram-Beitrag oder von einer Webseite ein. Die Zutaten landen mit einem Tipp auf der Einkaufsliste.</div>';
+    return h;
+  }
+  const rs=[...S.recipes].sort((a,b)=>(b.at||0)-(a.at||0));
+  h+='<div class="cards">'+rs.map(r=>{
+    const src=r.source?host(r.source):'';
+    return '<button class="card" data-act="open-recipe" data-id="'+esc(r.id)+'"><span class="t">'+esc(r.title)+'</span>'+
+      '<span>'+(r.example?'<span class="tag ex">Beispiel</span> ':'')+(src?'<span class="tag">'+esc(src)+'</span>':'')+'</span>'+
+      '<span class="m">'+(r.ingredients||[]).length+' Zutaten · '+(r.servings||2)+' Portionen</span></button>';
+  }).join('')+'</div>';
+  return h;
+}
+function recipeById(id){ return S.recipes.find(r=>r.id===id); }
+function renderRecipe(){
+  const r=recipeById(S.view.id);
+  if(!r) return '<button class="back" data-act="back">'+ICON.back+'Rezepte</button><div class="empty"><b>Rezept nicht gefunden</b>Es wurde vermutlich gelöscht.</div>';
+  const base=r.servings||2, sv=S.scale||base, f=sv/base;
+  const ings=r.ingredients||[];
+  const pick=S.pick[r.id]||(S.pick[r.id]={});
+  ings.forEach((g,ix)=>{ if(pick[ix]===undefined) pick[ix]=true; });
+  const onList=new Set(S.items.filter(i=>!i.done).map(i=>normKey(i.name,i.unit)));
+  const n=ings.filter((g,ix)=>pick[ix]).length;
+  const cooked=S.cooked[r.id]||(S.cooked[r.id]={});
+  const src=r.source?safeUrl(r.source):'';
+  let h='<div class="detail"><button class="back" data-act="back">'+ICON.back+'Rezepte</button>'+
+    '<h2>'+esc(r.title)+'</h2>'+
+    '<div class="meta" style="font-size:.9rem;gap:6px 12px">'+(r.example?'<span class="tag ex">Beispiel, kannst du löschen</span>':'')+(src?'<a class="link" href="'+esc(src)+'" target="_blank" rel="noopener">Quelle: '+esc(host(src))+'</a>':'')+'</div>'+
+    '<div class="section"><div class="stepper" role="group" aria-label="Portionen"><button data-act="serv" data-d="-1" aria-label="Weniger Portionen">−</button><span>'+sv+' Portion'+(sv===1?'':'en')+'</span><button data-act="serv" data-d="1" aria-label="Mehr Portionen">+</button></div></div>'+
+    '<div class="section"><h3>Zutaten</h3><div class="list ing" style="margin-top:8px">'+
+    ings.map((g,ix)=>{
+      const q=g.qty==null?'':fmtQty(Math.round(g.qty*f*100)/100,g.unit);
+      const on=onList.has(normKey(g.name,g.unit));
+      return '<div class="row'+(on?' onlist':'')+'" data-act="pick" data-ix="'+ix+'" role="checkbox" aria-checked="'+(!!pick[ix])+'" tabindex="0">'+
+        '<span class="chk'+(pick[ix]?' on':'')+'">'+ICON.check+'</span><div class="grow"><div class="name">'+esc(g.name)+'</div></div>'+(q?'<span class="qty">'+esc(q)+'</span>':'')+'</div>';
+    }).join('')+'</div></div>'+
+    '<div class="sticky-cta"><button class="btn" data-act="to-list"'+(n?'':' disabled')+'>'+(n?n+' Zutat'+(n===1?'':'en')+' auf die Einkaufsliste':'Keine Zutat ausgewählt')+'</button></div>';
+  const steps=r.steps||[];
+  if(steps.length){
+    h+='<div class="section"><h3>Zubereitung</h3><ol class="steps" style="margin-top:8px">'+steps.map((s,ix)=>'<li class="'+(cooked[ix]?'on':'')+'" data-act="cook" data-ix="'+ix+'"><span>'+esc(s)+'</span></li>').join('')+'</ol></div>';
+  }
+  h+='<div class="actions"><button class="btn ghost small" data-act="edit-recipe">Bearbeiten</button>'+
+    (S.confirmDel?'<button class="btn danger small" data-act="del-recipe-yes">Wirklich löschen</button><button class="btn ghost small" data-act="del-recipe-no">Abbrechen</button>':'<button class="btn ghost small danger" data-act="del-recipe">Löschen</button>')+'</div></div>';
+  return h;
+}
+function ingText(a){ return (a||[]).map(g=>[g.qty==null?'':fmtNum(g.qty),g.unit||'',g.name].filter(Boolean).join(' ')).join('\n'); }
+function renderForm(){
+  const r=S.view.id?recipeById(S.view.id):null;
+  return '<button class="back" data-act="cancel-form">'+ICON.back+'Zurück</button>'+
+  '<div class="head"><h2>'+(r?'Rezept bearbeiten':'Neues Rezept')+'</h2></div><div class="form">'+
+  '<div class="import"><div class="field"><label for="f-paste">Text einfügen</label>'+
+  '<small>Beschreibung eines Instagram-Beitrags oder Text einer Webseite. Instagram-Beiträge lassen sich hier nicht einbetten, der Text reicht aber.</small>'+
+  '<textarea id="f-paste" placeholder="Zutaten und Zubereitung hier einfügen"></textarea></div>'+
+  '<button class="btn ghost" data-act="parse" id="parse-btn" type="button">Text auslesen</button></div>'+
+  '<div class="field"><label for="f-title">Titel</label><input id="f-title" value="'+esc(r?r.title:'')+'" autocomplete="off"></div>'+
+  '<div class="two"><div class="field"><label for="f-src">Link zur Quelle</label><input id="f-src" inputmode="url" placeholder="https://" value="'+esc(r?r.source||'':'')+'" autocomplete="off"></div>'+
+  '<div class="field"><label for="f-serv">Portionen</label><input id="f-serv" type="number" min="1" max="50" value="'+(r?r.servings||2:2)+'"></div></div>'+
+  '<div class="field"><label for="f-ing">Zutaten</label><small>Eine pro Zeile, zum Beispiel „200 g Spaghetti“.</small><textarea id="f-ing" style="min-height:150px">'+esc(r?ingText(r.ingredients):'')+'</textarea></div>'+
+  '<div class="field"><label for="f-steps">Zubereitung</label><small>Ein Schritt pro Zeile.</small><textarea id="f-steps" style="min-height:150px">'+esc(r?(r.steps||[]).join('\n'):'')+'</textarea></div>'+
+  '<div class="actions" style="margin:0"><button class="btn" data-act="save-recipe" type="button">Speichern</button><button class="btn ghost" data-act="cancel-form" type="button">Abbrechen</button></div></div>';
+}
+function heuristicParse(text){
+  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const out={title:'',servings:2,ingredients:[],steps:[]};
+  for(const l of lines){
+    const cleaned=l.replace(/^[#@]\S+\s*/,'');
+    if(!out.title && l.length<80 && !LINE_RE.test(l)) { out.title=l.replace(/[#@]\S+/g,'').trim(); continue; }
+    const m=LINE_RE.exec(l.replace(/^[\s\-•*·–]+/,''));
+    if(m && l.length<70) { const p=parseLine(l); if(p) out.ingredients.push(p); }
+    else if(/^\d+[.)]\s+/.test(l)) out.steps.push(l.replace(/^\d+[.)]\s+/,''));
+    else if(l.length>=45 && !/^#/.test(cleaned)) out.steps.push(l);
+  }
+  return out;
+}
+function doParse(){
+  const text=$('f-paste').value.trim();
+  if(!text){ toast('Bitte zuerst einen Text einfügen.'); return; }
+  const res=heuristicParse(text);
+  if(res.title) $('f-title').value=res.title;
+  if(res.servings) $('f-serv').value=Math.max(1,Math.round(res.servings));
+  $('f-ing').value=ingText(res.ingredients);
+  $('f-steps').value=(res.steps||[]).join('\n');
+  toast(res.ingredients.length?'Übernommen. Bitte kurz prüfen.':'Keine Zutaten erkannt. Bitte von Hand ergänzen.');
+}
+async function saveRecipe(){
+  const title=$('f-title').value.trim();
+  if(!title){ toast('Bitte einen Titel eingeben.'); $('f-title').focus(); return; }
+  const ingredients=$('f-ing').value.split(/\r?\n/).map(parseLine).filter(Boolean);
+  const steps=$('f-steps').value.split(/\r?\n/).map(s=>s.replace(/^\s*\d+[.)]\s*/,'').trim()).filter(Boolean);
+  const src=$('f-src').value.trim();
+  const servings=Math.min(50,Math.max(1,parseInt($('f-serv').value,10)||2));
+  const ex=S.view.id?recipeById(S.view.id):null;
+  const id=ex?ex.id:uid();
+  const data={title,source:src&&!/^https?:\/\//i.test(src)?'https://'+src:src,servings,ingredients,steps,at:ex?ex.at||Date.now():Date.now(),by:S.deviceId};
+  if(ex&&ex.example) data.example=true;
+  await safe(put('recipes',id,data));
+  S.pick[id]=null; delete S.pick[id]; S.scale=null;
+  go({t:'recipe',id}); S.tab='rec'; refresh();
+}
+async function toList(){
+  const r=recipeById(S.view.id); if(!r) return;
+  const base=r.servings||2, sv=S.scale||base, f=sv/base, pick=S.pick[r.id]||{};
+  let added=0,merged=0;
+  for(let ix=0;ix<(r.ingredients||[]).length;ix++){
+    if(!pick[ix]) continue;
+    const g=r.ingredients[ix];
+    const res=await safe(addItem({name:g.name,qty:g.qty==null?null:Math.round(g.qty*f*100)/100,unit:g.unit},r.title));
+    if(res==='added') added++; else if(res==='merged') merged++;
+  }
+  toast(added+' neu'+(merged?', '+merged+' zusammengeführt':'')+'. Liste aktualisiert.');
+}
+
+// ---------- Onboarding ----------
+function renderOnboard(){
+  const mode=S.view.mode||'choice';
+  if(mode==='created'){
+    return '<div class="onboard"><div class="brand">Marktzettel</div>'+
+      '<p>Euer Haushaltscode ist erstellt. Gib ihn auf dem anderen Handy ein, um die Liste zu teilen.</p>'+
+      '<div class="codebox">'+esc(S.code)+'</div>'+
+      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Code kopieren</button>'+
+      '<div class="field"><label for="ob-name">Dein Name</label><input id="ob-name" placeholder="z. B. Steffen" autocomplete="off" value="'+esc(S.myName)+'"></div>'+
+      '<button class="btn" data-act="ob-finish">Los geht’s</button></div>';
+  }
+  if(mode==='join'){
+    return '<div class="onboard"><button class="back" data-act="ob-back" style="margin:0">'+ICON.back+'Zurück</button>'+
+      '<div class="brand">Beitreten</div>'+
+      '<div class="field"><label for="ob-code">Haushaltscode</label><input id="ob-code" placeholder="z. B. AB3K9XZ2" autocomplete="off" style="text-transform:uppercase;letter-spacing:.06em;font-weight:700"></div>'+
+      '<div class="field"><label for="ob-name">Dein Name</label><input id="ob-name" placeholder="z. B. Steffen" autocomplete="off" value="'+esc(S.myName)+'"></div>'+
+      '<button class="btn" data-act="ob-join">Beitreten</button></div>';
+  }
+  return '<div class="onboard"><div class="brand">Marktzettel</div>'+
+    '<p class="hint" style="margin:0">Eine gemeinsame Einkaufsliste und Rezeptsammlung für euren Haushalt.</p>'+
+    '<div class="choice">'+
+      '<button class="card" data-act="ob-create"><span class="t">Neuen Haushalt anlegen</span><span class="m">Erstellt einen Code, den du mit deiner Person teilst.</span></button>'+
+      '<button class="card" data-act="ob-mode-join"><span class="t">Bestehendem Haushalt beitreten</span><span class="m">Du hast bereits einen Code bekommen.</span></button>'+
+    '</div></div>';
+}
+function renderSettings(){
+  const pushLine = !('Notification' in window) ? 'Auf diesem Gerät nicht unterstützt.'
+    : Notification.permission==='denied' ? 'Blockiert. Bitte in den Browser-/System-Einstellungen erlauben.'
+    : S.pushEnabled ? 'Aktiviert auf diesem Gerät.'
+    : 'Noch nicht aktiviert.';
+  return '<button class="back" data-act="back">'+ICON.back+'Einkauf</button>'+
+    '<div class="head"><h2>Einstellungen</h2></div>'+
+    '<div class="settings-block">'+
+      '<div class="lbl">Haushaltscode</div>'+
+      '<div class="codebox" style="font-size:1.5rem;padding:12px">'+esc(S.code)+'</div>'+
+      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Code kopieren</button>'+
+    '</div>'+
+    '<div class="settings-block">'+
+      '<div class="lbl">Dein Name</div>'+
+      '<input class="aisle-name" id="set-name" value="'+esc(S.myName)+'" data-act="set-name">'+
+    '</div>'+
+    '<div class="settings-block">'+
+      '<div class="lbl">Benachrichtigungen</div>'+
+      '<div class="status-line"><span class="dot'+(S.pushEnabled?'':' off')+'"></span><span>'+esc(pushLine)+'</span></div>'+
+      (S.pushEnabled?'':'<button class="btn small" data-act="enable-push">Benachrichtigungen aktivieren</button>')+
+      '<p class="hint" style="margin:8px 0 0">Auf dem iPhone funktioniert das nur, wenn die App über „Zum Home-Bildschirm“ hinzugefügt wurde.</p>'+
+    '</div>'+
+    '<div class="settings-block">'+
+      '<div class="lbl">Sync-Status</div>'+
+      '<div class="status-line"><span class="dot'+(S.live?'':' off')+'"></span><span>'+(S.live?'Live synchron':(S.dbOk?'Verbinde…':'Nicht verbunden'))+'</span></div>'+
+    '</div>'+
+    '<button class="btn ghost small danger" data-act="leave-household">Haushalt wechseln</button>';
+}
+
+// ---------- Navigation und Rendering ----------
+function go(v){
+  S.view=v; S.confirmDel=false;
+  if(v.t==='recipe'){ const r=recipeById(v.id); S.scale=r?r.servings||2:null; }
+  refresh(true);
+  window.scrollTo(0,0);
+}
+function refresh(force){
+  const onboarding = S.view.t==='onboard';
+  $('tabs').hidden=onboarding;
+  if(!onboarding){
+    $('tab-list').classList.toggle('on',S.tab==='list');
+    $('tab-rec').classList.toggle('on',S.tab==='rec');
+    const openN=S.items.filter(i=>!i.done).length;
+    const b=$('badge'); b.hidden=!openN; b.textContent=openN;
+  }
+  if(((S.tab==='rec' && S.view.t==='form') || S.view.t==='aisles' || S.view.t==='settings' || onboarding) && !force) return;
+  const addhost=$('addhost');
+  if(onboarding){
+    addhost.innerHTML='';
+    $('main').innerHTML=renderOnboard();
+    $('sync').hidden=true;
+  } else if(S.view.t==='settings'){
+    $('sync').hidden=false;
+    addhost.innerHTML='';
+    $('main').innerHTML=renderSettings();
+  } else if(S.view.t==='aisles'){
+    $('sync').hidden=false;
+    addhost.innerHTML='';
+    $('main').innerHTML=renderAisleSettings();
+  } else if(S.tab==='list'){
+    $('sync').hidden=false;
+    if(!addhost.firstChild){
+      addhost.innerHTML='<form class="addbar" id="addform" autocomplete="off"><input id="addinp" placeholder="Artikel hinzufügen, z. B. 2 kg Kartoffeln" aria-label="Artikel hinzufügen" enterkeyhint="done"><button class="btn" type="submit">Hinzufügen</button></form>';
+      $('addform').addEventListener('submit',async e=>{
+        e.preventDefault(); const inp=$('addinp'); const p=parseLine(inp.value); if(!p) return; inp.value='';
+        const r=await safe(addItem(p)); if(r==='merged') toast('War schon auf der Liste, Menge ergänzt.'); inp.focus();
+      });
+    }
+    $('main').innerHTML=renderList();
+  } else {
+    $('sync').hidden=false;
+    addhost.innerHTML='';
+    $('main').innerHTML= S.view.t==='recipe'?renderRecipe(): S.view.t==='form'?renderForm(): renderRecipes();
+  }
+  $('sheethost').innerHTML = onboarding?'':renderCatSheet();
+}
+function setSync(live,txt){ S.live=live; $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>'; }
+
+document.addEventListener('click',async e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const act=el.dataset.act, id=el.dataset.id;
+  if(act==='tab'){ S.tab=el.dataset.tab; S.view={t:'list'}; refresh(true); window.scrollTo(0,0); }
+  else if(act==='toggle'){ const i=S.items.find(x=>x.id===id); if(i) await safe(patch('items',id,{done:!i.done,doneAt:i.done?0:Date.now(),by:S.deviceId})); }
+  else if(act==='del-item'){ await safe(drop('items',id)); }
+  else if(act==='clear-done'){ const d=S.items.filter(i=>i.done); for(const i of d) await safe(drop('items',i.id)); toast(d.length+' Artikel entfernt.'); }
+  else if(act==='new-recipe'){ go({t:'form'}); }
+  else if(act==='open-recipe'){ go({t:'recipe',id}); }
+  else if(act==='back'){ go({t:'list'}); }
+  else if(act==='cancel-form'){ go(S.view.id?{t:'recipe',id:S.view.id}:{t:'list'}); }
+  else if(act==='edit-recipe'){ go({t:'form',id:S.view.id}); }
+  else if(act==='serv'){ const r=recipeById(S.view.id); const cur=S.scale||(r&&r.servings)||2; S.scale=Math.max(1,Math.min(50,cur+parseInt(el.dataset.d,10))); refresh(true); }
+  else if(act==='pick'){ const p=S.pick[S.view.id]||(S.pick[S.view.id]={}); p[el.dataset.ix]=!p[el.dataset.ix]; refresh(true); }
+  else if(act==='cook'){ const c=S.cooked[S.view.id]||(S.cooked[S.view.id]={}); c[el.dataset.ix]=!c[el.dataset.ix]; refresh(true); }
+  else if(act==='to-list'){ el.disabled=true; await toList(); refresh(true); }
+  else if(act==='parse'){ doParse(); }
+  else if(act==='save-recipe'){ saveRecipe(); }
+  else if(act==='del-recipe'){ S.confirmDel=true; refresh(true); }
+  else if(act==='del-recipe-no'){ S.confirmDel=false; refresh(true); }
+  else if(act==='del-recipe-yes'){ const rid=S.view.id; await safe(drop('recipes',rid)); go({t:'list'}); toast('Rezept gelöscht.'); }
+  else if(act==='manage-aisles'){ go({t:'aisles'}); }
+  else if(act==='aisle-up'){ moveAisle(el.dataset.key,-1); }
+  else if(act==='aisle-down'){ moveAisle(el.dataset.key,1); }
+  else if(act==='aisle-del'){ await deleteAisle(el.dataset.key); }
+  else if(act==='cat-pmenu'){ S.catFor=id; refresh(true); }
+  else if(act==='cat-set'){ await safe(patch('items',el.dataset.id,{aisle:el.dataset.key})); S.catFor=null; refresh(true); }
+  else if(act==='cat-close'){ S.catFor=null; refresh(true); }
+  else if(act==='open-settings'){ go({t:'settings'}); }
+  else if(act==='copy-code'){ copyCode(el.dataset.code); }
+  else if(act==='enable-push'){ await enablePush(); }
+  else if(act==='leave-household'){ leaveHousehold(); }
+  else if(act==='ob-create'){ S.code=randomCode(); go({t:'onboard',mode:'created'}); setTimeout(()=>{const n=$('ob-name'); if(n) n.focus();},0); }
+  else if(act==='ob-mode-join'){ go({t:'onboard',mode:'join'}); setTimeout(()=>{const c=$('ob-code'); if(c) c.focus();},0); }
+  else if(act==='ob-back'){ go({t:'onboard',mode:'choice'}); }
+  else if(act==='ob-finish'){ await finishOnboarding($('ob-name').value.trim()); }
+  else if(act==='ob-join'){
+    const code=($('ob-code').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(code.length<4){ toast('Bitte den vollständigen Code eingeben.'); return; }
+    S.code=code; await finishOnboarding($('ob-name').value.trim());
+  }
+});
+document.addEventListener('keydown',e=>{
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('[role="checkbox"]')){ e.preventDefault(); e.target.click(); }
+});
+document.addEventListener('change',e=>{
+  const el=e.target.closest('[data-act="aisle-name"]');
+  if(el){
+    const a=S.aisles.find(x=>x.key===el.dataset.key); if(!a) return;
+    const val=el.value.trim();
+    if(!val){ el.value=a.label; return; }
+    if(val!==a.label){ a.label=val; saveAisles(); }
+    return;
+  }
+  const nameEl=e.target.closest('#set-name');
+  if(nameEl){
+    const val=nameEl.value.trim();
+    S.myName=val; saveIdentity();
+    if(S.dbOk) safe(put('devices',S.deviceId,{name:val,updatedAt:Date.now()}));
+    toast('Name gespeichert.');
+  }
+});
+document.addEventListener('submit',e=>{
+  if(e.target && e.target.id==='aisleaddform'){
+    e.preventDefault();
+    const inp=$('aisleaddinp'); if(!inp) return;
+    const label=inp.value.trim(); if(!label) return;
+    const key=slugKey(label);
+    S.aisles.push({key,label});
+    inp.value='';
+    saveAisles();
+  }
+});
+
+function copyCode(code){
+  const done=()=>toast('Code kopiert.');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(done).catch(()=>fallbackCopy(code,done));
+  } else fallbackCopy(code,done);
+}
+function fallbackCopy(code,done){
+  try{
+    const inp=document.createElement('input'); inp.value=code; inp.style.position='fixed'; inp.style.opacity='0';
+    document.body.appendChild(inp); inp.select(); document.execCommand('copy'); document.body.removeChild(inp); done();
+  }catch(e){ toast('Bitte den Code von Hand kopieren: '+code); }
+}
+function leaveHousehold(){
+  try{ localStorage.removeItem('mz_code'); }catch(e){}
+  location.reload();
+}
+
+// ---------- Onboarding-Abschluss & Start ----------
+async function finishOnboarding(name){
+  S.myName=name||''; saveIdentity();
+  S.tab='list'; S.view={t:'list'};
+  await startSync();
+  if(S.dbOk){ await safe(put('devices',S.deviceId,{name:S.myName,updatedAt:Date.now()})); }
+  refresh(true);
+}
+async function enablePush(){
+  if(!('serviceWorker' in navigator) || !('Notification' in window)){ toast('Push wird auf diesem Gerät nicht unterstützt.'); return; }
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ toast('Berechtigung nicht erteilt.'); refresh(true); return; }
+    const reg=await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+    const token=await window.MZFirebase.getFcmToken(reg);
+    if(!token){ toast('Kein Push-Token erhalten. Ist alles in config.js eingetragen?'); return; }
+    await safe(patch('devices',S.deviceId,{token,updatedAt:Date.now()}).catch(()=>put('devices',S.deviceId,{name:S.myName,token,updatedAt:Date.now()})));
+    S.pushEnabled=true; toast('Benachrichtigungen aktiviert.'); refresh(true);
+  }catch(e){ toast('Benachrichtigungen konnten nicht aktiviert werden.'); }
+}
+function onItems(list){ S.items=list; setSync(true,'Live synchron'); refresh(); }
+function onRecipes(list){ S.recipes=list; refresh(); }
+function onDevices(list){
+  S.names={}; list.forEach(d=>{ S.names[d.id]=d.name||''; });
+  refresh();
+}
+async function startSync(){
+  unsub.forEach(u=>{ try{u();}catch(e){} });
+  unsub=[];
+  const ready=await window.MZFirebaseReady;
+  if(!ready.ok){
+    S.dbOk=false;
+    setSync(false,'Nur auf diesem Gerät');
+    $('banner').innerHTML='<div class="banner warn">config.js ist noch nicht ausgefüllt. Die App läuft ohne Synchronisierung. Siehe README.md.</div>';
+    return;
+  }
+  S.dbOk=true;
+  const M=window.MZFirebase;
+  const err=()=>{ setSync(false,'Sync unterbrochen'); };
+  try{
+    unsub.push(M.fns.onSnapshot(fsCol('items'), snap=>onItems(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsub.push(M.fns.onSnapshot(fsCol('recipes'), snap=>onRecipes(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsub.push(M.fns.onSnapshot(fsCol('devices'), snap=>onDevices(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsub.push(M.fns.onSnapshot(fsDoc('meta/aisles'), snap=>{
+      if(snap.exists()){ const l=snap.data().list; if(Array.isArray(l)&&l.length) S.aisles=l; }
+      refresh();
+    }, err));
+    setSync(false,'Verbinde…');
+  }catch(e){ setSync(false,'Sync unterbrochen'); }
+}
+async function boot(){
+  loadIdentity();
+  if(S.code){
+    S.tab='list'; S.view={t:'list'};
+    refresh(true);
+    await startSync();
+    refresh(true);
+  } else {
+    S.view={t:'onboard',mode:'choice'};
+    refresh(true);
+  }
+}
+boot();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Sicherheitsmodell dieser App: statt eines echten Logins teilen sich zwei
+// oder mehr Personen einen zufälligen Haushaltscode (siehe README.md).
+// Wer den Code kennt, kann lesen und schreiben. Das ist bewusst einfach
+// gehalten für eine private Einkaufsliste zwischen wenigen Personen –
+// nicht geeignet für sensible Daten oder große Gruppen.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /households/{code}/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
