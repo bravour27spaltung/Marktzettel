@@ -371,9 +371,16 @@ async function addItem(p,recipeTitle){
   if(!S.listId) return 'notready';
   const name=p.name.trim(); if(!name) return 'skip';
   const key=normKey(name,p.unit);
-  const ex=S.items.find(i=>!i.done&&normKey(i.name,i.unit)===key);
+  // Auch gegen bereits erledigte Artikel abgleichen: für einen neuen Einkauf
+  // soll ein schon erledigtes Item reaktiviert werden statt einen doppelten
+  // Eintrag anzulegen.
+  const ex=S.items.find(i=>normKey(i.name,i.unit)===key);
   if(ex){
     const recipes=Array.from(new Set([...(ex.recipes||[]),...(recipeTitle?[recipeTitle]:[])]));
+    if(ex.done){
+      await patchItem(ex.id,{done:false,doneAt:0,qty:p.qty==null?ex.qty:p.qty,unit:p.unit||ex.unit,recipes,by:S.deviceId});
+      return 'revived';
+    }
     if(ex.qty!=null && p.qty!=null){
       await patchItem(ex.id,{qty:Math.round((ex.qty+p.qty)*100)/100,recipes,by:S.deviceId}); return 'merged';
     }
@@ -385,6 +392,36 @@ async function addItem(p,recipeTitle){
   const aisle=S.aisles.some(a=>a.key===guess)?guess:'sonst';
   await putItem(id,{name,qty:p.qty==null?null:p.qty,unit:p.unit||'',aisle,done:false,recipes:recipeTitle?[recipeTitle]:[],by:S.deviceId,at:Date.now()});
   return 'added';
+}
+// Räumt versehentlich entstandene Dubletten (gleicher Name+Einheit, gleicher
+// Erledigt-Status) auf: Mengen und Rezept-Zuordnungen werden im ältesten
+// Eintrag zusammengeführt, die überzähligen Duplikate werden gelöscht.
+let dedupeBusy=false;
+async function dedupeItems(list){
+  if(dedupeBusy || !list.length) return;
+  const seen=new Map(); const drop=[];
+  for(const it of list){
+    const k=normKey(it.name,it.unit)+'|'+(it.done?'1':'0');
+    if(seen.has(k)){
+      const keep=seen.get(k);
+      if(it.qty!=null) keep.qty=Math.round(((keep.qty||0)+it.qty)*100)/100;
+      keep.recipes=Array.from(new Set([...(keep.recipes||[]),...(it.recipes||[])]));
+      drop.push(it.id);
+    } else {
+      seen.set(k,{...it});
+    }
+  }
+  if(!drop.length) return;
+  dedupeBusy=true;
+  try{
+    for(const keep of seen.values()){
+      const orig=list.find(i=>i.id===keep.id);
+      if(orig && (orig.qty!==keep.qty || (orig.recipes||[]).length!==keep.recipes.length)){
+        await safe(patchItem(keep.id,{qty:keep.qty,recipes:keep.recipes}));
+      }
+    }
+    for(const id of drop){ await safe(dropItem(id)); }
+  } finally { dedupeBusy=false; }
 }
 
 // ---------- Kategorien ----------
@@ -503,13 +540,11 @@ function renderList(){
     if(!g.length) continue;
     h+='<section class="group"><h3>'+esc(a.label)+'</h3><div class="list">'+g.map(rowHtml).join('')+'</div></section>';
   }
-  if(done.length){
-    h+='<section class="group"><div class="head" style="margin-bottom:6px;flex-wrap:wrap;row-gap:8px"><h3>Erledigt ('+done.length+')</h3>'+
-      '<div style="display:flex;align-items:center;gap:10px">'+switchHtml('toggle-done',S.showDone,'Anzeigen')+
-      '<button class="btn ghost small" data-act="clear-done">Entfernen</button></div></div>'+
-      (S.showDone?'<div class="list">'+done.sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).map(rowHtml).join('')+'</div>':'')+
-    '</section>';
-  }
+  h+='<section class="group"><div class="head" style="margin-bottom:6px;flex-wrap:wrap;row-gap:8px"><h3>Erledigt'+(done.length?' ('+done.length+')':'')+'</h3>'+
+    '<div style="display:flex;align-items:center;gap:10px">'+switchHtml('toggle-done',S.showDone,'Anzeigen')+
+    (done.length?'<button class="btn ghost small" data-act="clear-done">Entfernen</button>':'')+'</div></div>'+
+    (S.showDone?(done.length?'<div class="list">'+done.sort((a,b)=>(b.doneAt||0)-(a.doneAt||0)).map(rowHtml).join('')+'</div>':'<p class="hint" style="margin:0">Noch nichts erledigt. Getippte Artikel, die schon mal erledigt waren, landen beim erneuten Eintippen automatisch wieder oben in der Liste.</p>'):'')+
+  '</section>';
   return h;
 }
 function switchHtml(act,on,label){
@@ -696,14 +731,14 @@ async function toList(){
   const r=recipeById(S.view.id); if(!r) return;
   if(!S.listId){ toast('Verbinde noch mit der Liste – bitte kurz warten und erneut versuchen.'); return; }
   const base=r.servings||2, sv=S.scale||base, f=sv/base, pick=S.pick[r.id]||{};
-  let added=0,merged=0;
+  let added=0,merged=0,revived=0;
   for(let ix=0;ix<(r.ingredients||[]).length;ix++){
     if(!pick[ix]) continue;
     const g=r.ingredients[ix];
     const res=await safe(addItem({name:g.name,qty:g.qty==null?null:Math.round(g.qty*f*100)/100,unit:g.unit},r.title));
-    if(res==='added') added++; else if(res==='merged') merged++;
+    if(res==='added') added++; else if(res==='merged') merged++; else if(res==='revived') revived++;
   }
-  toast(added+' neu'+(merged?', '+merged+' zusammengeführt':'')+'. Liste aktualisiert.');
+  toast(added+' neu'+(merged?', '+merged+' zusammengeführt':'')+(revived?', '+revived+' reaktiviert':'')+'. Liste aktualisiert.');
 }
 
 // ---------- Onboarding ----------
@@ -812,7 +847,7 @@ function refresh(force){
         e.preventDefault(); const inp=$('addinp'); const p=parseLine(inp.value); if(!p) return;
         const r=await safe(addItem(p));
         if(r==='notready'){ toast('Verbinde noch mit der Liste – bitte kurz warten und erneut versuchen.'); }
-        else { inp.value=''; if(r==='merged') toast('War schon auf der Liste, Menge ergänzt.'); }
+        else { inp.value=''; if(r==='merged') toast('War schon auf der Liste, Menge ergänzt.'); else if(r==='revived') toast('War schon erledigt – wieder auf die Liste gesetzt.'); }
         inp.focus();
       });
     }
@@ -998,7 +1033,7 @@ async function enablePush(){
     S.pushEnabled=true; toast('Benachrichtigungen aktiviert.'); refresh(true);
   }catch(e){ toast('Benachrichtigungen konnten nicht aktiviert werden.'); }
 }
-function onItems(list){ S.items=list; setSync(true,'Live synchron'); refresh(); }
+function onItems(list){ S.items=list; setSync(true,'Live synchron'); refresh(); dedupeItems(list); }
 function onRecipes(list){ S.recipes=list; refresh(); }
 function onDevices(list){
   S.names={}; list.forEach(d=>{ S.names[d.id]=d.name||''; });
