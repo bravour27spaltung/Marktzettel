@@ -12,7 +12,6 @@
       appId: "1:620748019595:web:a2a0b363be35df4b82818e"
     },
     // Project settings → Cloud Messaging → Web configuration → "Web Push certificates"
-    // Noch eintragen, sobald du den Schlüssel generiert hast (README.md, Schritt 4).
-    vapidKey: "DEIN_VAPID_KEY"
+    vapidKey: "BLe6Ffs2sRuh5zPcBqMxHSMi6jAg4vfozlmesm5ASMh7sspUcTVmwiI9hVzhnIvm5bDVoL7IIz_bJbs3Z6HJcJI"
   };
 })(typeof self !== "undefined" ? self : this);
