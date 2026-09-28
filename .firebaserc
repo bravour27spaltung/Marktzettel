@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "marktzettel-5fcb0"
-  }
+    "default": "marktzettel-5fcb0",
+    "Marktzettel": "marktzettel-5fcb0"
+  },
+  "targets": {},
+  "etags": {}
 }

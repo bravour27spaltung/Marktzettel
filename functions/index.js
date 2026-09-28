@@ -15,18 +15,19 @@ setGlobalOptions({ region: "europe-west1", maxInstances: 5 });
 initializeApp();
 const db = getFirestore();
 
-function describeItemChange(before, after) {
-  if (!before && after) return `${after.name || "Artikel"} hinzugefügt`;
-  if (before && !after) return `${before.name || "Artikel"} entfernt`;
+function describeItemChange(before, after, listName) {
+  const suffix = listName ? ` · ${listName}` : "";
+  if (!before && after) return `${after.name || "Artikel"} hinzugefügt${suffix}`;
+  if (before && !after) return `${before.name || "Artikel"} entfernt${suffix}`;
   if (before && after) {
     if (before.done !== after.done) {
-      return after.done ? `${after.name} abgehakt` : `${after.name} wieder geöffnet`;
+      return (after.done ? `${after.name} abgehakt` : `${after.name} wieder geöffnet`) + suffix;
     }
     if (before.qty !== after.qty || before.unit !== after.unit || before.aisle !== after.aisle) {
-      return `${after.name} geändert`;
+      return `${after.name} geändert${suffix}`;
     }
   }
-  return "Einkaufsliste aktualisiert";
+  return `Einkaufsliste aktualisiert${suffix}`;
 }
 
 function describeRecipeChange(before, after) {
@@ -75,12 +76,19 @@ async function notifyHousehold(code, excludeDeviceId, title, body) {
 }
 
 exports.onItemChange = onDocumentWritten(
-  "households/{code}/items/{itemId}",
+  "households/{code}/lists/{listId}/items/{itemId}",
   async (event) => {
     const before = event.data.before.exists ? event.data.before.data() : null;
     const after = event.data.after.exists ? event.data.after.data() : null;
     const actor = (after && after.by) || (before && before.by) || null;
-    const body = describeItemChange(before, after);
+    let listName = "";
+    try {
+      const listSnap = await db.doc(`households/${event.params.code}/lists/${event.params.listId}`).get();
+      listName = listSnap.exists ? listSnap.get("name") || "" : "";
+    } catch (e) {
+      // Name ist optional, Push wird auch ohne verschickt.
+    }
+    const body = describeItemChange(before, after, listName);
     await notifyHousehold(event.params.code, actor, "Marktzettel", body);
   }
 );

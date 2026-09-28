@@ -134,6 +134,23 @@ gehalten für eine private Liste zwischen wenigen vertrauten Personen.
 Gib den Code nicht öffentlich weiter und teile ihn nur mit Personen, die
 mitschreiben dürfen sollen.
 
+### Mehrere Listen pro Haushalt
+
+Ein Haushalt kann mehrere Einkaufslisten haben (z. B. "Wocheneinkauf" und
+"Drogerie"). Jede Liste liegt unter
+`households/<code>/lists/<listId>/items/…` und hat eigene Artikel;
+Rezepte, Kategorien und Geräte gelten dagegen für den ganzen Haushalt und
+werden von allen Listen gemeinsam genutzt. Über den Button mit dem
+Listennamen oben auf der Einkaufsseite lassen sich Listen anlegen,
+umbenennen, sortieren, archivieren und (nur archivierte) endgültig
+löschen.
+
+Bestehende Haushalte, die noch Artikel in der alten, flachen Struktur
+(`households/<code>/items/…`) hatten, werden beim ersten Öffnen nach
+diesem Update automatisch in eine neue Liste "Einkauf" umgezogen – das
+passiert einmalig und automatisch, es ist keine manuelle Migration
+nötig.
+
 ## Wie die Benachrichtigungen funktionieren
 
 Jedes Gerät speichert beim Aktivieren von Benachrichtigungen ein
@@ -141,7 +158,8 @@ sogenanntes FCM-Token unter `households/<code>/devices/<geräte-id>`. Die
 Cloud Function in `functions/index.js` reagiert auf jede Änderung an
 Artikeln oder Rezepten und schickt eine Push-Nachricht an alle
 gespeicherten Tokens des Haushalts – außer an das Gerät, das die
-Änderung selbst ausgelöst hat.
+Änderung selbst ausgelöst hat. Bei mehreren Listen steht der
+Listenname mit in der Nachricht.
 
 ## Rezepte aus Text übernehmen
 

@@ -185,7 +185,7 @@ nav.tabs button.on{color:var(--accent);background:var(--accent-soft)}
 <script src="./config.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import { getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { getMessaging, isSupported, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging.js";
 
 const CONFIG = window.MARKTZETTEL_CONFIG || {};
@@ -197,7 +197,7 @@ window.MZFirebaseReady = new Promise((res) => { resolveReady = res; });
 window.MZFirebase = {
   configured,
   db: null,
-  fns: { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc },
+  fns: { doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc, getDocs },
   getFcmToken: async () => null,
 };
 
@@ -239,7 +239,9 @@ const ICON={
   tag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4v5l10.5 10.5a2 2 0 0 0 2.83 0l4.17-4.17a2 2 0 0 0 0-2.83z"/><circle cx="7.3" cy="7.3" r="1.15" fill="currentColor" stroke="none"/></svg>',
   up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
-  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0"/></svg>'
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0"/></svg>',
+  archive:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/></svg>',
+  chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-left:2px"><path d="M8 5l8 7-8 7"/></svg>'
 };
 const DEFAULT_AISLES=[
   ['obst','Obst & Gemüse'],['brot','Backwaren'],['kuehl','Kühlregal'],['fleisch','Fleisch & Fisch'],
@@ -299,9 +301,10 @@ function randomCode(){
 
 // ---------- Zustand ----------
 const S={
-  items:[],recipes:[],aisles:DEFAULT_AISLES.map(a=>({...a})),names:{},
+  items:[],recipes:[],lists:[],listId:null,aisles:DEFAULT_AISLES.map(a=>({...a})),names:{},
   code:null,deviceId:null,myName:'',pushEnabled:false,
   catFor:null,tab:'list',view:{t:'onboard'},scale:null,pick:{},cooked:{},
+  listsOpen:false,confirmDelList:null,
   live:false,confirmDel:false,dbOk:false
 };
 const $=id=>document.getElementById(id);
@@ -315,6 +318,7 @@ function loadIdentity(){
     S.code=localStorage.getItem('mz_code')||null;
     S.deviceId=localStorage.getItem('mz_device')||null;
     S.myName=localStorage.getItem('mz_name')||'';
+    if(S.code) S.listId=localStorage.getItem('mz_list_'+S.code)||null;
   }catch(e){}
   if(!S.deviceId){ S.deviceId=uid()+uid(); try{localStorage.setItem('mz_device',S.deviceId);}catch(e){} }
 }
@@ -322,17 +326,28 @@ function saveIdentity(){
   try{
     if(S.code) localStorage.setItem('mz_code',S.code);
     localStorage.setItem('mz_name',S.myName||'');
+    if(S.code && S.listId) localStorage.setItem('mz_list_'+S.code,S.listId);
   }catch(e){}
 }
 
 // ---------- Firestore-Zugriff ----------
-let unsub=[];
+// Datenmodell: households/{code} enthält "lists" (je eine Einkaufsliste mit
+// eigener items-Unterkollektion), "recipes", "devices" und "meta" – Rezepte
+// und Kategorien sind haushaltsweit geteilt, Artikel gehören zu genau einer Liste.
+let unsubHousehold=[];
+let unsubItems=null;
 function basePath(){ return 'households/'+S.code; }
+function listPath(){ return basePath()+'/lists/'+S.listId; }
 function fsDoc(path){ const M=window.MZFirebase; return M.fns.doc(M.db, basePath()+'/'+path); }
 function fsCol(path){ const M=window.MZFirebase; return M.fns.collection(M.db, basePath()+'/'+path); }
+function fsListDoc(path){ const M=window.MZFirebase; return M.fns.doc(M.db, listPath()+'/'+path); }
+function fsListCol(path){ const M=window.MZFirebase; return M.fns.collection(M.db, listPath()+'/'+path); }
 async function put(coll,id,data){ await window.MZFirebase.fns.setDoc(fsDoc(coll+'/'+id), data); }
 async function patch(coll,id,data){ await window.MZFirebase.fns.updateDoc(fsDoc(coll+'/'+id), data); }
 async function drop(coll,id){ await window.MZFirebase.fns.deleteDoc(fsDoc(coll+'/'+id)); }
+async function putItem(id,data){ await window.MZFirebase.fns.setDoc(fsListDoc('items/'+id), data); }
+async function patchItem(id,data){ await window.MZFirebase.fns.updateDoc(fsListDoc('items/'+id), data); }
+async function dropItem(id){ await window.MZFirebase.fns.deleteDoc(fsListDoc('items/'+id)); }
 function safe(p){ return p.catch(e=>{ toast('Konnte nicht gespeichert werden. Bitte erneut versuchen.'); throw e; }).catch(()=>{}); }
 
 // ---------- Einkaufsliste ----------
@@ -345,15 +360,15 @@ async function addItem(p,recipeTitle){
   if(ex){
     const recipes=Array.from(new Set([...(ex.recipes||[]),...(recipeTitle?[recipeTitle]:[])]));
     if(ex.qty!=null && p.qty!=null){
-      await patch('items',ex.id,{qty:Math.round((ex.qty+p.qty)*100)/100,recipes,by:S.deviceId}); return 'merged';
+      await patchItem(ex.id,{qty:Math.round((ex.qty+p.qty)*100)/100,recipes,by:S.deviceId}); return 'merged';
     }
-    if(recipeTitle && recipes.length!==(ex.recipes||[]).length) await patch('items',ex.id,{recipes,by:S.deviceId});
+    if(recipeTitle && recipes.length!==(ex.recipes||[]).length) await patchItem(ex.id,{recipes,by:S.deviceId});
     return 'merged';
   }
   const id=uid();
   const guess=aisleOf(name);
   const aisle=S.aisles.some(a=>a.key===guess)?guess:'sonst';
-  await put('items',id,{name,qty:p.qty==null?null:p.qty,unit:p.unit||'',aisle,done:false,recipes:recipeTitle?[recipeTitle]:[],by:S.deviceId,at:Date.now()});
+  await putItem(id,{name,qty:p.qty==null?null:p.qty,unit:p.unit||'',aisle,done:false,recipes:recipeTitle?[recipeTitle]:[],by:S.deviceId,at:Date.now()});
   return 'added';
 }
 
@@ -377,15 +392,92 @@ function moveAisle(key,dir){
 async function deleteAisle(key){
   if(key==='sonst') return;
   const affected=S.items.filter(i=>i.aisle===key);
-  for(const it of affected){ await safe(patch('items',it.id,{aisle:'sonst'})); }
+  for(const it of affected){ await safe(patchItem(it.id,{aisle:'sonst'})); }
   S.aisles=S.aisles.filter(a=>a.key!==key);
   await saveAisles();
+}
+
+// ---------- Listen ----------
+// Neue Haushalte bekommen sofort eine Standardliste "Einkauf". Haushalte, die
+// noch Artikel aus der alten, flachen Struktur (households/{code}/items/*)
+// haben, werden einmalig in diese Standardliste umgezogen. meta/migration
+// verhindert, dass das bei jedem Connect erneut passiert.
+async function ensureDefaultList(){
+  const M=window.MZFirebase;
+  try{
+    const migSnap=await M.fns.getDoc(fsDoc('meta/migration'));
+    if(migSnap.exists()) return;
+    const [oldSnap,listsSnap]=await Promise.all([M.fns.getDocs(fsCol('items')),M.fns.getDocs(fsCol('lists'))]);
+    if(listsSnap.empty){
+      const defId='default';
+      await put('lists',defId,{name:'Einkauf',order:0,archived:false,createdAt:Date.now()});
+      if(!oldSnap.empty){
+        for(const d of oldSnap.docs){ await M.fns.setDoc(M.fns.doc(M.db,basePath()+'/lists/'+defId+'/items/'+d.id),d.data()); }
+      }
+    }
+    if(!oldSnap.empty){
+      for(const d of oldSnap.docs){ await M.fns.deleteDoc(d.ref); }
+    }
+    await put('meta','migration',{done:true,at:Date.now()});
+  }catch(e){ /* Best effort, wird beim nächsten Connect erneut versucht */ }
+}
+function onLists(list){
+  S.lists=list;
+  const active=list.filter(l=>!l.archived).sort((a,b)=>(a.order||0)-(b.order||0)||(a.createdAt||0)-(b.createdAt||0));
+  let pick=null;
+  if(S.listId && list.some(l=>l.id===S.listId && !l.archived)) pick=S.listId;
+  else if(active.length) pick=active[0].id;
+  if(pick && pick!==S.listId) selectList(pick);
+  else if(!pick){ S.listId=null; S.items=[]; }
+  refresh(true);
+}
+function selectList(id){
+  if(id===S.listId){ refresh(true); return; }
+  S.listId=id; S.items=[]; saveIdentity();
+  if(unsubItems){ try{unsubItems();}catch(e){} unsubItems=null; }
+  if(S.dbOk){
+    const M=window.MZFirebase;
+    unsubItems=M.fns.onSnapshot(fsListCol('items'), snap=>onItems(snap.docs.map(d=>({id:d.id,...d.data()}))), ()=>setSync(false,'Sync unterbrochen'));
+  }
+  refresh(true);
+}
+async function createList(name){
+  const trimmed=(name||'').trim(); if(!trimmed) return;
+  const id=uid();
+  const order=S.lists.reduce((m,l)=>Math.max(m,l.order||0),-1)+1;
+  await safe(put('lists',id,{name:trimmed,order,archived:false,createdAt:Date.now()}));
+  selectList(id);
+}
+async function renameList(id,name){
+  const trimmed=(name||'').trim(); if(!trimmed) return;
+  await safe(patch('lists',id,{name:trimmed}));
+}
+async function archiveList(id,archived){
+  await safe(patch('lists',id,{archived}));
+}
+async function deleteListPermanently(id){
+  const M=window.MZFirebase;
+  const itemsSnap=await M.fns.getDocs(fsCol('lists/'+id+'/items'));
+  for(const d of itemsSnap.docs){ await safe(M.fns.deleteDoc(d.ref)); }
+  await safe(drop('lists',id));
+  if(S.listId===id) S.listId=null;
+}
+function moveListOrder(id,dir){
+  const arr=S.lists.filter(l=>!l.archived).sort((a,b)=>(a.order||0)-(b.order||0));
+  const ix=arr.findIndex(l=>l.id===id); if(ix<0) return;
+  const nx=ix+dir; if(nx<0||nx>=arr.length) return;
+  const a=arr[ix],b=arr[nx];
+  safe(patch('lists',a.id,{order:b.order||0}));
+  safe(patch('lists',b.id,{order:a.order||0}));
 }
 
 function renderList(){
   const open=S.items.filter(i=>!i.done), done=S.items.filter(i=>i.done);
   const total=S.items.length, pct=total?Math.round(done.length/total*100):0;
-  let h='<div style="text-align:right;margin:-4px 0 10px"><button class="btn ghost small" data-act="manage-aisles">Kategorien verwalten</button></div>';
+  const curList=S.lists.find(l=>l.id===S.listId);
+  let h='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 10px">'+
+    '<button class="btn ghost small" data-act="lists-open">'+esc(curList?curList.name:'Liste')+ICON.chev+'</button>'+
+    '<button class="btn ghost small" data-act="manage-aisles">Kategorien</button></div>';
   if(!total){
     h+='<div class="empty"><b>Die Liste ist leer</b>Tippe oben einen Artikel ein, zum Beispiel „2 kg Kartoffeln“, oder füge Zutaten aus einem Rezept hinzu.</div>';
   } else {
@@ -441,6 +533,42 @@ function renderCatSheet(){
       '<div class="meta">'+esc(it.name)+'</div>'+
       '<div class="sheet-list">'+S.aisles.map(a=>'<button class="sheet-item'+(a.key===cur?' on':'')+'" data-act="cat-set" data-id="'+esc(it.id)+'" data-key="'+esc(a.key)+'">'+esc(a.label)+(a.key===cur?ICON.check:'')+'</button>').join('')+'</div>'+
       '<button class="btn ghost small" data-act="cat-close">Abbrechen</button>'+
+    '</div></div>';
+}
+function renderListsSheet(){
+  if(!S.listsOpen) return '';
+  const active=S.lists.filter(l=>!l.archived).sort((a,b)=>(a.order||0)-(b.order||0));
+  const archived=S.lists.filter(l=>l.archived);
+  const rows=active.map((l,ix)=>{
+    return '<div class="row aisle-row">'+
+      '<button class="iconbtn" data-act="list-select" data-id="'+esc(l.id)+'" aria-label="Liste '+esc(l.name)+' auswählen" style="color:var(--accent)">'+(l.id===S.listId?ICON.check:'')+'</button>'+
+      '<input class="aisle-name" data-act="list-name" data-id="'+esc(l.id)+'" value="'+esc(l.name)+'" aria-label="Name der Liste">'+
+      '<div class="aisle-btns">'+
+        '<button class="iconbtn" data-act="list-up" data-id="'+esc(l.id)+'"'+(ix===0?' disabled':'')+' aria-label="Nach oben">'+ICON.up+'</button>'+
+        '<button class="iconbtn" data-act="list-down" data-id="'+esc(l.id)+'"'+(ix===active.length-1?' disabled':'')+' aria-label="Nach unten">'+ICON.down+'</button>'+
+        (active.length>1?'<button class="iconbtn" data-act="list-archive" data-id="'+esc(l.id)+'" aria-label="Liste '+esc(l.name)+' archivieren">'+ICON.archive+'</button>':'')+
+      '</div></div>';
+  }).join('');
+  let archivedHtml='';
+  if(archived.length){
+    archivedHtml='<h3 style="margin-top:16px">Archiviert</h3><div class="list" style="margin-top:8px">'+archived.map(l=>{
+      return '<div class="row">'+
+        '<div class="grow name">'+esc(l.name)+'</div>'+
+        '<button class="btn ghost small" data-act="list-unarchive" data-id="'+esc(l.id)+'">Zurückholen</button>'+
+        (S.confirmDelList===l.id?
+          '<button class="btn danger small" data-act="list-del-yes" data-id="'+esc(l.id)+'">Wirklich?</button>':
+          '<button class="iconbtn" data-act="list-del" data-id="'+esc(l.id)+'" aria-label="'+esc(l.name)+' endgültig löschen">'+ICON.x+'</button>')+
+      '</div>';
+    }).join('')+'</div>';
+  }
+  return '<div class="sheet-backdrop" data-act="lists-close">'+
+    '<div class="sheet">'+
+      '<h3 style="margin-bottom:0">Listen</h3>'+
+      '<p class="hint" style="margin:0">Jede Liste hat eigene Artikel. Kategorien und Rezepte gelten für den ganzen Haushalt.</p>'+
+      '<div class="list">'+rows+'</div>'+
+      archivedHtml+
+      '<form class="addbar" id="listaddform" style="margin-top:6px" autocomplete="off"><input id="listaddinp" placeholder="Neue Liste, z. B. Wocheneinkauf" aria-label="Neue Liste"><button class="btn" type="submit">Anlegen</button></form>'+
+      '<button class="btn ghost small" data-act="lists-close">Fertig</button>'+
     '</div></div>';
 }
 
@@ -658,7 +786,7 @@ function refresh(force){
     addhost.innerHTML='';
     $('main').innerHTML= S.view.t==='recipe'?renderRecipe(): S.view.t==='form'?renderForm(): renderRecipes();
   }
-  $('sheethost').innerHTML = onboarding?'':renderCatSheet();
+  $('sheethost').innerHTML = onboarding?'':(renderCatSheet()+renderListsSheet());
 }
 function setSync(live,txt){ S.live=live; $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>'; }
 
@@ -666,9 +794,9 @@ document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-act]'); if(!el) return;
   const act=el.dataset.act, id=el.dataset.id;
   if(act==='tab'){ S.tab=el.dataset.tab; S.view={t:'list'}; refresh(true); window.scrollTo(0,0); }
-  else if(act==='toggle'){ const i=S.items.find(x=>x.id===id); if(i) await safe(patch('items',id,{done:!i.done,doneAt:i.done?0:Date.now(),by:S.deviceId})); }
-  else if(act==='del-item'){ await safe(drop('items',id)); }
-  else if(act==='clear-done'){ const d=S.items.filter(i=>i.done); for(const i of d) await safe(drop('items',i.id)); toast(d.length+' Artikel entfernt.'); }
+  else if(act==='toggle'){ const i=S.items.find(x=>x.id===id); if(i) await safe(patchItem(id,{done:!i.done,doneAt:i.done?0:Date.now(),by:S.deviceId})); }
+  else if(act==='del-item'){ await safe(dropItem(id)); }
+  else if(act==='clear-done'){ const d=S.items.filter(i=>i.done); for(const i of d) await safe(dropItem(i.id)); toast(d.length+' Artikel entfernt.'); }
   else if(act==='new-recipe'){ go({t:'form'}); }
   else if(act==='open-recipe'){ go({t:'recipe',id}); }
   else if(act==='back'){ go({t:'list'}); }
@@ -688,8 +816,17 @@ document.addEventListener('click',async e=>{
   else if(act==='aisle-down'){ moveAisle(el.dataset.key,1); }
   else if(act==='aisle-del'){ await deleteAisle(el.dataset.key); }
   else if(act==='cat-pmenu'){ S.catFor=id; refresh(true); }
-  else if(act==='cat-set'){ await safe(patch('items',el.dataset.id,{aisle:el.dataset.key})); S.catFor=null; refresh(true); }
+  else if(act==='cat-set'){ await safe(patchItem(el.dataset.id,{aisle:el.dataset.key})); S.catFor=null; refresh(true); }
   else if(act==='cat-close'){ S.catFor=null; refresh(true); }
+  else if(act==='lists-open'){ S.listsOpen=true; S.confirmDelList=null; refresh(true); }
+  else if(act==='lists-close'){ S.listsOpen=false; S.confirmDelList=null; refresh(true); }
+  else if(act==='list-select'){ selectList(id); S.listsOpen=false; refresh(true); }
+  else if(act==='list-up'){ moveListOrder(id,-1); }
+  else if(act==='list-down'){ moveListOrder(id,1); }
+  else if(act==='list-archive'){ await archiveList(id,true); }
+  else if(act==='list-unarchive'){ await archiveList(id,false); }
+  else if(act==='list-del'){ S.confirmDelList=id; refresh(true); }
+  else if(act==='list-del-yes'){ await deleteListPermanently(id); S.confirmDelList=null; refresh(true); }
   else if(act==='open-settings'){ go({t:'settings'}); }
   else if(act==='copy-code'){ copyCode(el.dataset.code); }
   else if(act==='enable-push'){ await enablePush(); }
@@ -716,6 +853,14 @@ document.addEventListener('change',e=>{
     if(val!==a.label){ a.label=val; saveAisles(); }
     return;
   }
+  const listNameEl=e.target.closest('[data-act="list-name"]');
+  if(listNameEl){
+    const l=S.lists.find(x=>x.id===listNameEl.dataset.id); if(!l) return;
+    const val=listNameEl.value.trim();
+    if(!val){ listNameEl.value=l.name; return; }
+    if(val!==l.name) renameList(l.id,val);
+    return;
+  }
   const nameEl=e.target.closest('#set-name');
   if(nameEl){
     const val=nameEl.value.trim();
@@ -733,6 +878,12 @@ document.addEventListener('submit',e=>{
     S.aisles.push({key,label});
     inp.value='';
     saveAisles();
+  } else if(e.target && e.target.id==='listaddform'){
+    e.preventDefault();
+    const inp=$('listaddinp'); if(!inp) return;
+    const name=inp.value.trim(); if(!name) return;
+    inp.value='';
+    createList(name);
   }
 });
 
@@ -757,7 +908,7 @@ function leaveHousehold(){
 async function finishOnboarding(name){
   S.myName=name||''; saveIdentity();
   S.tab='list'; S.view={t:'list'};
-  await startSync();
+  await startHouseholdSync();
   if(S.dbOk){ await safe(put('devices',S.deviceId,{name:S.myName,updatedAt:Date.now()})); }
   refresh(true);
 }
@@ -779,9 +930,10 @@ function onDevices(list){
   S.names={}; list.forEach(d=>{ S.names[d.id]=d.name||''; });
   refresh();
 }
-async function startSync(){
-  unsub.forEach(u=>{ try{u();}catch(e){} });
-  unsub=[];
+async function startHouseholdSync(){
+  unsubHousehold.forEach(u=>{ try{u();}catch(e){} });
+  unsubHousehold=[];
+  if(unsubItems){ try{unsubItems();}catch(e){} unsubItems=null; }
   const ready=await window.MZFirebaseReady;
   if(!ready.ok){
     S.dbOk=false;
@@ -792,11 +944,12 @@ async function startSync(){
   S.dbOk=true;
   const M=window.MZFirebase;
   const err=()=>{ setSync(false,'Sync unterbrochen'); };
+  await ensureDefaultList();
   try{
-    unsub.push(M.fns.onSnapshot(fsCol('items'), snap=>onItems(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
-    unsub.push(M.fns.onSnapshot(fsCol('recipes'), snap=>onRecipes(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
-    unsub.push(M.fns.onSnapshot(fsCol('devices'), snap=>onDevices(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
-    unsub.push(M.fns.onSnapshot(fsDoc('meta/aisles'), snap=>{
+    unsubHousehold.push(M.fns.onSnapshot(fsCol('lists'), snap=>onLists(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsubHousehold.push(M.fns.onSnapshot(fsCol('recipes'), snap=>onRecipes(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsubHousehold.push(M.fns.onSnapshot(fsCol('devices'), snap=>onDevices(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
+    unsubHousehold.push(M.fns.onSnapshot(fsDoc('meta/aisles'), snap=>{
       if(snap.exists()){ const l=snap.data().list; if(Array.isArray(l)&&l.length) S.aisles=l; }
       refresh();
     }, err));
@@ -808,7 +961,7 @@ async function boot(){
   if(S.code){
     S.tab='list'; S.view={t:'list'};
     refresh(true);
-    await startSync();
+    await startHouseholdSync();
     refresh(true);
   } else {
     S.view={t:'onboard',mode:'choice'};
