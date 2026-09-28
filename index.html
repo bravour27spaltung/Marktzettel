@@ -368,6 +368,7 @@ function safe(p){ return p.catch(e=>{ toast('Konnte nicht gespeichert werden. Bi
 function normKey(n,u){ return String(n).toLowerCase().trim()+'|'+(u||'').toLowerCase(); }
 function resolveAisle(i){ const k=i&&i.aisle; return (k && S.aisles.some(a=>a.key===k)) ? k : 'sonst'; }
 async function addItem(p,recipeTitle){
+  if(!S.listId) return 'notready';
   const name=p.name.trim(); if(!name) return 'skip';
   const key=normKey(name,p.unit);
   const ex=S.items.find(i=>!i.done&&normKey(i.name,i.unit)===key);
@@ -693,6 +694,7 @@ async function saveRecipe(){
 }
 async function toList(){
   const r=recipeById(S.view.id); if(!r) return;
+  if(!S.listId){ toast('Verbinde noch mit der Liste – bitte kurz warten und erneut versuchen.'); return; }
   const base=r.servings||2, sv=S.scale||base, f=sv/base, pick=S.pick[r.id]||{};
   let added=0,merged=0;
   for(let ix=0;ix<(r.ingredients||[]).length;ix++){
@@ -742,8 +744,8 @@ function renderSettings(){
     '<div class="settings-block">'+
       '<div class="lbl">Haushaltscode</div>'+
       '<div class="codebox" style="font-size:1.5rem;padding:12px">'+esc(S.code)+'</div>'+
-      '<div class="actions" style="margin-top:0"><button class="btn small" data-act="open-invite">Person einladen</button>'+
-      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Nur Code kopieren</button></div>'+
+      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Code kopieren</button>'+
+      '<p class="hint" style="margin:6px 0 0">Zum Einladen: Home-Icon oben links antippen.</p>'+
     '</div>'+
     '<div class="settings-block">'+
       '<div class="lbl">Mitglieder</div>'+
@@ -776,7 +778,7 @@ function go(v){
 function refresh(force){
   const onboarding = S.view.t==='onboard';
   $('tabs').hidden=onboarding;
-  $('invite').hidden=onboarding;
+  $('invite').hidden=onboarding||S.view.t!=='lists';
   $('listsbtn').hidden=onboarding;
   if(!onboarding){
     $('tab-list').classList.toggle('on',S.tab==='list');
@@ -807,8 +809,11 @@ function refresh(force){
     if(!addhost.firstChild){
       addhost.innerHTML='<form class="addbar" id="addform" autocomplete="off"><input id="addinp" placeholder="Artikel hinzufügen, z. B. 2 kg Kartoffeln" aria-label="Artikel hinzufügen" enterkeyhint="done"><button class="btn" type="submit">Hinzufügen</button></form>';
       $('addform').addEventListener('submit',async e=>{
-        e.preventDefault(); const inp=$('addinp'); const p=parseLine(inp.value); if(!p) return; inp.value='';
-        const r=await safe(addItem(p)); if(r==='merged') toast('War schon auf der Liste, Menge ergänzt.'); inp.focus();
+        e.preventDefault(); const inp=$('addinp'); const p=parseLine(inp.value); if(!p) return;
+        const r=await safe(addItem(p));
+        if(r==='notready'){ toast('Verbinde noch mit der Liste – bitte kurz warten und erneut versuchen.'); }
+        else { inp.value=''; if(r==='merged') toast('War schon auf der Liste, Menge ergänzt.'); }
+        inp.focus();
       });
     }
     $('main').innerHTML=renderList();
@@ -1057,6 +1062,15 @@ async function boot(){
   }
   stripInviteCodeFromUrl();
 }
+// Beim erneuten Öffnen der App (z. B. vom Home-Bildschirm, nach dem die
+// PWA im Hintergrund pausiert war) soll wieder die Einkaufsliste zu sehen
+// sein, unabhängig davon, welche Unterseite zuletzt offen war.
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && S.code && S.view.t!=='onboard' && S.view.t!=='list'){
+    S.tab='list';
+    go({t:'list'});
+  }
+});
 boot();
 })();
 </script>
