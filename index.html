@@ -169,7 +169,10 @@ nav.tabs button.on{color:var(--accent);background:var(--accent-soft)}
 <div class="wrap" id="wrap">
   <header class="top">
     <div class="brand">Marktzettel</div>
-    <button class="sync" id="sync" data-act="open-settings" aria-label="Einstellungen und Sync-Status"><span class="dot off"></span><span>Lädt…</span></button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="btn small" id="invite" data-act="open-invite" aria-label="Person zum Haushalt einladen" hidden>Einladen</button>
+      <button class="sync" id="sync" data-act="open-settings" aria-label="Einstellungen und Sync-Status"><span class="dot off"></span><span>Lädt…</span></button>
+    </div>
   </header>
   <div id="banner"></div>
   <div id="addhost"></div>
@@ -302,7 +305,7 @@ const S={
   items:[],recipes:[],aisles:DEFAULT_AISLES.map(a=>({...a})),names:{},
   code:null,deviceId:null,myName:'',pushEnabled:false,
   catFor:null,tab:'list',view:{t:'onboard'},scale:null,pick:{},cooked:{},
-  live:false,confirmDel:false,dbOk:false
+  live:false,confirmDel:false,dbOk:false,inviteOpen:false
 };
 const $=id=>document.getElementById(id);
 let toastT=null;
@@ -564,16 +567,19 @@ function renderOnboard(){
   const mode=S.view.mode||'choice';
   if(mode==='created'){
     return '<div class="onboard"><div class="brand">Marktzettel</div>'+
-      '<p>Euer Haushaltscode ist erstellt. Gib ihn auf dem anderen Handy ein, um die Liste zu teilen.</p>'+
+      '<p>Euer Haushaltscode ist erstellt. Teile ihn mit deiner Person, um die Liste gemeinsam zu nutzen.</p>'+
       '<div class="codebox">'+esc(S.code)+'</div>'+
-      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Code kopieren</button>'+
+      '<div class="actions" style="margin-top:0"><button class="btn" data-act="invite-share">Einladung teilen</button>'+
+      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Nur Code kopieren</button></div>'+
       '<div class="field"><label for="ob-name">Dein Name</label><input id="ob-name" placeholder="z. B. Steffen" autocomplete="off" value="'+esc(S.myName)+'"></div>'+
       '<button class="btn" data-act="ob-finish">Los geht’s</button></div>';
   }
   if(mode==='join'){
+    const pre=S.view.prefillCode||'';
     return '<div class="onboard"><button class="back" data-act="ob-back" style="margin:0">'+ICON.back+'Zurück</button>'+
       '<div class="brand">Beitreten</div>'+
-      '<div class="field"><label for="ob-code">Haushaltscode</label><input id="ob-code" placeholder="z. B. AB3K9XZ2" autocomplete="off" style="text-transform:uppercase;letter-spacing:.06em;font-weight:700"></div>'+
+      (pre?'<p class="hint" style="margin:0">Code aus deiner Einladung wurde schon eingetragen.</p>':'')+
+      '<div class="field"><label for="ob-code">Haushaltscode</label><input id="ob-code" placeholder="z. B. AB3K9XZ2" autocomplete="off" style="text-transform:uppercase;letter-spacing:.06em;font-weight:700" value="'+esc(pre)+'"></div>'+
       '<div class="field"><label for="ob-name">Dein Name</label><input id="ob-name" placeholder="z. B. Steffen" autocomplete="off" value="'+esc(S.myName)+'"></div>'+
       '<button class="btn" data-act="ob-join">Beitreten</button></div>';
   }
@@ -594,7 +600,12 @@ function renderSettings(){
     '<div class="settings-block">'+
       '<div class="lbl">Haushaltscode</div>'+
       '<div class="codebox" style="font-size:1.5rem;padding:12px">'+esc(S.code)+'</div>'+
-      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Code kopieren</button>'+
+      '<div class="actions" style="margin-top:0"><button class="btn small" data-act="open-invite">Person einladen</button>'+
+      '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Nur Code kopieren</button></div>'+
+    '</div>'+
+    '<div class="settings-block">'+
+      '<div class="lbl">Mitglieder</div>'+
+      '<div class="hint" style="margin:0">'+(memberNames().length?esc(memberNames().join(', ')):'Noch niemand außer dir beigetreten.')+'</div>'+
     '</div>'+
     '<div class="settings-block">'+
       '<div class="lbl">Dein Name</div>'+
@@ -623,6 +634,7 @@ function go(v){
 function refresh(force){
   const onboarding = S.view.t==='onboard';
   $('tabs').hidden=onboarding;
+  $('invite').hidden=onboarding;
   if(!onboarding){
     $('tab-list').classList.toggle('on',S.tab==='list');
     $('tab-rec').classList.toggle('on',S.tab==='rec');
@@ -658,7 +670,7 @@ function refresh(force){
     addhost.innerHTML='';
     $('main').innerHTML= S.view.t==='recipe'?renderRecipe(): S.view.t==='form'?renderForm(): renderRecipes();
   }
-  $('sheethost').innerHTML = onboarding?'':renderCatSheet();
+  $('sheethost').innerHTML = onboarding?'':(renderCatSheet()+renderInviteSheet());
 }
 function setSync(live,txt){ S.live=live; $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>'; }
 
@@ -691,6 +703,9 @@ document.addEventListener('click',async e=>{
   else if(act==='cat-set'){ await safe(patch('items',el.dataset.id,{aisle:el.dataset.key})); S.catFor=null; refresh(true); }
   else if(act==='cat-close'){ S.catFor=null; refresh(true); }
   else if(act==='open-settings'){ go({t:'settings'}); }
+  else if(act==='open-invite'){ S.inviteOpen=true; refresh(true); }
+  else if(act==='invite-close'){ S.inviteOpen=false; refresh(true); }
+  else if(act==='invite-share'){ shareInvite(); }
   else if(act==='copy-code'){ copyCode(el.dataset.code); }
   else if(act==='enable-push'){ await enablePush(); }
   else if(act==='leave-household'){ leaveHousehold(); }
@@ -736,17 +751,52 @@ document.addEventListener('submit',e=>{
   }
 });
 
-function copyCode(code){
-  const done=()=>toast('Code kopiert.');
+function copyText(text,doneMsg,label){
+  const done=()=>toast(doneMsg);
   if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(code).then(done).catch(()=>fallbackCopy(code,done));
-  } else fallbackCopy(code,done);
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done,label));
+  } else fallbackCopy(text,done,label);
 }
-function fallbackCopy(code,done){
+function copyCode(code){ copyText(code,'Code kopiert.','den Code'); }
+function fallbackCopy(text,done,label){
   try{
-    const inp=document.createElement('input'); inp.value=code; inp.style.position='fixed'; inp.style.opacity='0';
+    const inp=document.createElement('input'); inp.value=text; inp.style.position='fixed'; inp.style.opacity='0';
     document.body.appendChild(inp); inp.select(); document.execCommand('copy'); document.body.removeChild(inp); done();
-  }catch(e){ toast('Bitte den Code von Hand kopieren: '+code); }
+  }catch(e){ toast('Bitte '+(label||'den Text')+' von Hand kopieren: '+text); }
+}
+function memberNames(){ return Object.values(S.names).filter(Boolean); }
+function getInviteLink(){
+  try{
+    const url=new URL(location.href);
+    url.search=''; url.hash='';
+    if(S.code) url.searchParams.set('code',S.code);
+    return url.toString();
+  }catch(e){ return S.code||''; }
+}
+async function shareInvite(){
+  const link=getInviteLink();
+  const text='Tritt unserem Marktzettel-Haushalt bei – Code: '+S.code;
+  if(navigator.share){
+    try{ await navigator.share({title:'Marktzettel',text,url:link}); return; }
+    catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  copyText(link,'Einladungslink kopiert.','den Link');
+}
+function renderInviteSheet(){
+  if(!S.inviteOpen) return '';
+  const members=memberNames();
+  return '<div class="sheet-backdrop" data-act="invite-close">'+
+    '<div class="sheet">'+
+      '<h3 style="margin-bottom:0">Person einladen</h3>'+
+      '<p class="hint" style="margin:4px 0 0">Teile den Code oder Link – auf dem anderen Handy dann auf „Bestehendem Haushalt beitreten“ tippen (oder den Link direkt öffnen).</p>'+
+      '<div class="codebox" style="margin-top:6px">'+esc(S.code)+'</div>'+
+      '<div class="actions" style="margin-top:0">'+
+        '<button class="btn" data-act="invite-share">Einladung teilen</button>'+
+        '<button class="btn ghost small" data-act="copy-code" data-code="'+esc(S.code)+'">Nur Code kopieren</button>'+
+      '</div>'+
+      (members.length?('<div><div class="lbl">Schon dabei</div><div class="hint" style="margin:4px 0 0">'+esc(members.join(', '))+'</div></div>'):'')+
+      '<button class="btn ghost small" data-act="invite-close">Schließen</button>'+
+    '</div></div>';
 }
 function leaveHousehold(){
   try{ localStorage.removeItem('mz_code'); }catch(e){}
@@ -803,17 +853,37 @@ async function startSync(){
     setSync(false,'Verbinde…');
   }catch(e){ setSync(false,'Sync unterbrochen'); }
 }
+function inviteCodeFromUrl(){
+  try{
+    const p=new URLSearchParams(location.search);
+    return (p.get('code')||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  }catch(e){ return ''; }
+}
+function stripInviteCodeFromUrl(){
+  try{
+    const u=new URL(location.href);
+    if(!u.searchParams.has('code')) return;
+    u.searchParams.delete('code');
+    history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
+  }catch(e){}
+}
 async function boot(){
   loadIdentity();
+  const linkCode=inviteCodeFromUrl();
   if(S.code){
     S.tab='list'; S.view={t:'list'};
     refresh(true);
     await startSync();
     refresh(true);
+  } else if(linkCode){
+    S.view={t:'onboard',mode:'join',prefillCode:linkCode};
+    refresh(true);
+    setTimeout(()=>{ const n=$('ob-name'); if(n) n.focus(); },0);
   } else {
     S.view={t:'onboard',mode:'choice'};
     refresh(true);
   }
+  stripInviteCodeFromUrl();
 }
 boot();
 })();
