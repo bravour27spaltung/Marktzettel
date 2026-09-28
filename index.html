@@ -195,6 +195,18 @@ nav.tabs button.on{color:var(--accent);background:var(--accent-soft)}
 <div id="sheethost"></div>
 
 <script src="./config.js"></script>
+<script>
+// Dieses Promise muss synchron in einem klassischen (nicht type="module")
+// Script erzeugt werden: type="module"-Scripts werden wie defer-Scripts
+// erst nach dem kompletten Parsen des Dokuments ausgeführt, während das
+// App-Script weiter unten synchron läuft und beim Start (boot()) sofort
+// auf window.MZFirebaseReady zugreift. Läge dieses Promise stattdessen im
+// Modul weiter unten, wäre window.MZFirebaseReady beim ersten Zugriff noch
+// undefined, was zu einem unbehandelten Fehler ("Cannot read properties of
+// undefined (reading 'ok')") und dauerhaft hängendem "Lädt…" führte, vor
+// allem bei wiederkehrenden Nutzern (App vom Home-Bildschirm geöffnet).
+window.MZFirebaseReady = new Promise((res) => { window.__mzResolveReady = res; });
+</script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -204,8 +216,7 @@ const CONFIG = window.MARKTZETTEL_CONFIG || {};
 const fb = CONFIG.firebase || {};
 const configured = !!(fb.apiKey && fb.projectId && String(fb.apiKey).indexOf('DEIN_') !== 0);
 
-let resolveReady;
-window.MZFirebaseReady = new Promise((res) => { resolveReady = res; });
+const resolveReady = window.__mzResolveReady;
 window.MZFirebase = {
   configured,
   db: null,
@@ -1043,17 +1054,22 @@ async function startHouseholdSync(){
   unsubHousehold.forEach(u=>{ try{u();}catch(e){} });
   unsubHousehold=[];
   if(unsubItems){ try{unsubItems();}catch(e){} unsubItems=null; }
-  const ready=await window.MZFirebaseReady;
-  if(!ready.ok){
+  let ready;
+  try{ ready=await window.MZFirebaseReady; }catch(e){ ready=null; }
+  if(!ready || !ready.ok){
     S.dbOk=false;
     setSync(false,'Nur auf diesem Gerät');
-    $('banner').innerHTML='<div class="banner warn">config.js ist noch nicht ausgefüllt. Die App läuft ohne Synchronisierung. Siehe README.md.</div>';
+    if(ready && ready.error!=null){
+      $('banner').innerHTML='<div class="banner warn">config.js ist noch nicht ausgefüllt. Die App läuft ohne Synchronisierung. Siehe README.md.</div>';
+    }
     return;
   }
   S.dbOk=true;
   const M=window.MZFirebase;
   const err=()=>{ setSync(false,'Sync unterbrochen'); };
-  await ensureDefaultList();
+  try{
+    await ensureDefaultList();
+  }catch(e){ setSync(false,'Sync unterbrochen'); return; }
   try{
     unsubHousehold.push(M.fns.onSnapshot(fsCol('lists'), snap=>onLists(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
     unsubHousehold.push(M.fns.onSnapshot(fsCol('recipes'), snap=>onRecipes(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
