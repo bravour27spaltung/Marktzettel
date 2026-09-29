@@ -1,0 +1,23 @@
+name: Firebase Hosting Deploy
+
+# Deployt index.html, config.js usw. automatisch auf Firebase Hosting,
+# sobald auf main gepusht wird - kein manuelles "firebase deploy" mehr
+# vom eigenen Rechner aus nötig. Cloud Functions und Firestore-Regeln
+# sind hier bewusst NICHT enthalten und bleiben weiterhin ein manueller
+# "firebase deploy --only functions,firestore:rules" bei Bedarf, da sie
+# selten und meist zusammen mit einer bewussten Prüfung geändert werden.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_MARKTZETTEL_5FCB0 }}"
+          projectId: marktzettel-5fcb0
+          channelId: live
