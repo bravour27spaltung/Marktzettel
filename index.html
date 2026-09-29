@@ -361,6 +361,8 @@ function saveIdentity(){
 // und Kategorien sind haushaltsweit geteilt, Artikel gehören zu genau einer Liste.
 let unsubHousehold=[];
 let unsubItems=null;
+let syncWatchdog=null;
+const SYNC_TIMEOUT_MS=5000;
 function basePath(){ return 'households/'+S.code; }
 function listPath(){ return basePath()+'/lists/'+S.listId; }
 function fsDoc(path){ const M=window.MZFirebase; return M.fns.doc(M.db, basePath()+'/'+path); }
@@ -809,7 +811,8 @@ function renderSettings(){
     '</div>'+
     '<div class="settings-block">'+
       '<div class="lbl">Sync-Status</div>'+
-      '<div class="status-line"><span class="dot'+(S.live?'':' off')+'"></span><span>'+(S.live?'Live synchron':(S.dbOk?'Verbinde…':'Nicht verbunden'))+'</span></div>'+
+      '<div class="status-line"><span class="dot'+(S.live?'':' off')+'"></span><span>'+esc($('sync').textContent)+'</span></div>'+
+      (S.live?'':'<button class="btn small" data-act="retry-sync">Erneut versuchen</button>')+
     '</div>'+
     '<button class="btn ghost small danger" data-act="leave-household">Haushalt wechseln</button>';
 }
@@ -870,7 +873,24 @@ function refresh(force){
   }
   $('sheethost').innerHTML = onboarding?'':(renderCatSheet()+renderInviteSheet());
 }
-function setSync(live,txt){ S.live=live; $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>'; }
+function setSync(live,txt){
+  S.live=live;
+  $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>';
+  if(live && syncWatchdog){ clearTimeout(syncWatchdog); syncWatchdog=null; }
+  if(S.view.t==='settings') refresh(true);
+}
+// Bricht die "Verbinde…"-Anzeige nach spätestens SYNC_TIMEOUT_MS ab, falls bis
+// dahin kein "Live synchron" erreicht wurde (z. B. bei fehlender Internet-
+// verbindung oder einem hängenden Firestore-Listener) – die App soll nie
+// unbegrenzt auf "Verbinde…" hängen bleiben, sondern spätestens nach 5
+// Sekunden einen klaren, per Hand wiederholbaren Zustand zeigen.
+function armSyncWatchdog(){
+  if(syncWatchdog) clearTimeout(syncWatchdog);
+  syncWatchdog=setTimeout(()=>{
+    syncWatchdog=null;
+    if(!S.live) setSync(false,'Sync unterbrochen');
+  },SYNC_TIMEOUT_MS);
+}
 
 document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-act]'); if(!el) return;
@@ -915,6 +935,7 @@ document.addEventListener('click',async e=>{
   else if(act==='invite-share'){ shareInvite(); }
   else if(act==='copy-code'){ copyCode(el.dataset.code); }
   else if(act==='enable-push'){ await enablePush(); }
+  else if(act==='retry-sync'){ await startHouseholdSync(); }
   else if(act==='leave-household'){ leaveHousehold(); }
   else if(act==='ob-create'){ S.code=randomCode(); go({t:'onboard',mode:'created'}); setTimeout(()=>{const n=$('ob-name'); if(n) n.focus();},0); }
   else if(act==='ob-mode-join'){ go({t:'onboard',mode:'join'}); setTimeout(()=>{const c=$('ob-code'); if(c) c.focus();},0); }
@@ -1067,6 +1088,12 @@ async function startHouseholdSync(){
   S.dbOk=true;
   const M=window.MZFirebase;
   const err=()=>{ setSync(false,'Sync unterbrochen'); };
+  // Ab hier zählt die 5-Sekunden-Frist: egal ob ensureDefaultList() oder ein
+  // onSnapshot-Listener hängen bleibt (z. B. ohne Internetverbindung), die
+  // Anzeige "Verbinde…" wird spätestens nach SYNC_TIMEOUT_MS durch einen
+  // klaren, per Hand wiederholbaren Zustand ersetzt statt endlos zu hängen.
+  setSync(false,'Verbinde…');
+  armSyncWatchdog();
   try{
     await ensureDefaultList();
   }catch(e){ setSync(false,'Sync unterbrochen'); return; }
@@ -1078,7 +1105,6 @@ async function startHouseholdSync(){
       if(snap.exists()){ const l=snap.data().list; if(Array.isArray(l)&&l.length) S.aisles=l; }
       refresh();
     }, err));
-    setSync(false,'Verbinde…');
   }catch(e){ setSync(false,'Sync unterbrochen'); }
 }
 function inviteCodeFromUrl(){
