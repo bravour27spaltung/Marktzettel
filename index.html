@@ -361,8 +361,6 @@ function saveIdentity(){
 // und Kategorien sind haushaltsweit geteilt, Artikel gehören zu genau einer Liste.
 let unsubHousehold=[];
 let unsubItems=null;
-let syncWatchdog=null;
-const SYNC_TIMEOUT_MS=5000;
 function basePath(){ return 'households/'+S.code; }
 function listPath(){ return basePath()+'/lists/'+S.listId; }
 function fsDoc(path){ const M=window.MZFirebase; return M.fns.doc(M.db, basePath()+'/'+path); }
@@ -467,11 +465,19 @@ async function deleteAisle(key){
 // noch Artikel aus der alten, flachen Struktur (households/{code}/items/*)
 // haben, werden einmalig in diese Standardliste umgezogen. meta/migration
 // verhindert, dass das bei jedem Connect erneut passiert.
+// Lokaler Cache je Haushaltscode, ob die Migration schon geprüft wurde – so
+// muss nicht bei jedem einzelnen App-Start erneut ein getDoc() gegen
+// Firestore geschickt werden, nur um festzustellen, dass es nichts zu tun
+// gibt (das kostet auf einem Mobilfunknetz spürbar Zeit beim Verbindungsaufbau).
+function migrationCacheKey(){ return 'mz_migrated_'+S.code; }
 async function ensureDefaultList(){
   const M=window.MZFirebase;
   try{
+    let cached=false;
+    try{ cached=localStorage.getItem(migrationCacheKey())==='1'; }catch(e){}
+    if(cached) return;
     const migSnap=await M.fns.getDoc(fsDoc('meta/migration'));
-    if(migSnap.exists()) return;
+    if(migSnap.exists()){ try{ localStorage.setItem(migrationCacheKey(),'1'); }catch(e){} return; }
     const [oldSnap,listsSnap]=await Promise.all([M.fns.getDocs(fsCol('items')),M.fns.getDocs(fsCol('lists'))]);
     if(listsSnap.empty){
       const defId='default';
@@ -484,6 +490,7 @@ async function ensureDefaultList(){
       for(const d of oldSnap.docs){ await M.fns.deleteDoc(d.ref); }
     }
     await put('meta','migration',{done:true,at:Date.now()});
+    try{ localStorage.setItem(migrationCacheKey(),'1'); }catch(e){}
   }catch(e){ /* Best effort, wird beim nächsten Connect erneut versucht */ }
 }
 function onLists(list){
@@ -876,20 +883,7 @@ function refresh(force){
 function setSync(live,txt){
   S.live=live;
   $('sync').innerHTML='<span class="dot'+(live?'':' off')+'"></span><span>'+esc(txt)+'</span>';
-  if(live && syncWatchdog){ clearTimeout(syncWatchdog); syncWatchdog=null; }
   if(S.view.t==='settings') refresh(true);
-}
-// Bricht die "Verbinde…"-Anzeige nach spätestens SYNC_TIMEOUT_MS ab, falls bis
-// dahin kein "Live synchron" erreicht wurde (z. B. bei fehlender Internet-
-// verbindung oder einem hängenden Firestore-Listener) – die App soll nie
-// unbegrenzt auf "Verbinde…" hängen bleiben, sondern spätestens nach 5
-// Sekunden einen klaren, per Hand wiederholbaren Zustand zeigen.
-function armSyncWatchdog(){
-  if(syncWatchdog) clearTimeout(syncWatchdog);
-  syncWatchdog=setTimeout(()=>{
-    syncWatchdog=null;
-    if(!S.live) setSync(false,'Sync unterbrochen');
-  },SYNC_TIMEOUT_MS);
 }
 
 document.addEventListener('click',async e=>{
@@ -1088,15 +1082,13 @@ async function startHouseholdSync(){
   S.dbOk=true;
   const M=window.MZFirebase;
   const err=()=>{ setSync(false,'Sync unterbrochen'); };
-  // Ab hier zählt die 5-Sekunden-Frist: egal ob ensureDefaultList() oder ein
-  // onSnapshot-Listener hängen bleibt (z. B. ohne Internetverbindung), die
-  // Anzeige "Verbinde…" wird spätestens nach SYNC_TIMEOUT_MS durch einen
-  // klaren, per Hand wiederholbaren Zustand ersetzt statt endlos zu hängen.
   setSync(false,'Verbinde…');
-  armSyncWatchdog();
-  try{
-    await ensureDefaultList();
-  }catch(e){ setSync(false,'Sync unterbrochen'); return; }
+  // Die Listener werden sofort registriert, statt – wie vorher – erst auf
+  // ensureDefaultList() zu warten: dessen einmalige Migrationsprüfung lief
+  // bisher bei JEDEM Verbindungsaufbau (auch bei jedem App-Neustart) als
+  // zusätzlicher, blockierender Netzwerk-Umweg vor allem anderen. Beides
+  // parallel zu starten spart eine ganze Firestore-Anfrage-Rundreise, bevor
+  // überhaupt die erste Liste/Artikel ankommen können.
   try{
     unsubHousehold.push(M.fns.onSnapshot(fsCol('lists'), snap=>onLists(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
     unsubHousehold.push(M.fns.onSnapshot(fsCol('recipes'), snap=>onRecipes(snap.docs.map(d=>({id:d.id,...d.data()}))), err));
@@ -1105,7 +1097,8 @@ async function startHouseholdSync(){
       if(snap.exists()){ const l=snap.data().list; if(Array.isArray(l)&&l.length) S.aisles=l; }
       refresh();
     }, err));
-  }catch(e){ setSync(false,'Sync unterbrochen'); }
+  }catch(e){ setSync(false,'Sync unterbrochen'); return; }
+  ensureDefaultList().catch(()=>{});
 }
 function inviteCodeFromUrl(){
   try{
