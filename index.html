@@ -1135,10 +1135,20 @@ async function boot(){
 // Beim erneuten Öffnen der App (z. B. vom Home-Bildschirm, nach dem die
 // PWA im Hintergrund pausiert war) soll wieder die Einkaufsliste zu sehen
 // sein, unabhängig davon, welche Unterseite zuletzt offen war.
+//
+// Zusätzlich wird die Firestore-Verbindung komplett neu aufgebaut: iOS
+// friert bei einer länger im Hintergrund pausierten WKWebView-PWA die
+// Netzwerkverbindungen ein. Die bestehenden onSnapshot-Listener können
+// danach stumm tot sein, ohne dass ein Fehler auftritt und ohne dass
+// S.live/der Sync-Status das anzeigt – die App wirkt "verbunden", erhält
+// aber keine Änderungen mehr. Ein erneuter startHouseholdSync() räumt die
+// alten Listener auf und registriert sie neu; dank der Migrations-Cache-
+// und Parallelisierungs-Optimierung ist das inzwischen schnell genug, um
+// bei jedem Sichtbarwerden gefahrlos zu passieren.
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible' && S.code && S.view.t!=='onboard' && S.view.t!=='list'){
-    S.tab='list';
-    go({t:'list'});
+  if(document.visibilityState==='visible' && S.code){
+    if(S.view.t!=='onboard' && S.view.t!=='list'){ S.tab='list'; go({t:'list'}); }
+    startHouseholdSync();
   }
 });
 boot();
