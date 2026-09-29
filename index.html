@@ -499,12 +499,17 @@ function onLists(list){
   let pick=null;
   if(S.listId && list.some(l=>l.id===S.listId && !l.archived)) pick=S.listId;
   else if(active.length) pick=active[0].id;
-  if(pick && pick!==S.listId) selectList(pick);
+  // Auch wenn dieselbe Liste wie vorher gewählt wird (der Normalfall beim
+  // Reconnect), muss selectList() erneut laufen, falls der Artikel-Listener
+  // gerade nicht existiert (z. B. weil startHouseholdSync() ihn beim
+  // erneuten Verbindungsaufbau abgeräumt hat) – sonst bleibt er dauerhaft
+  // tot und "Live synchron" wird nie wieder erreicht.
+  if(pick && (pick!==S.listId || !unsubItems)) selectList(pick);
   else if(!pick){ S.listId=null; S.items=[]; }
   refresh(true);
 }
 function selectList(id){
-  if(id===S.listId){ refresh(true); return; }
+  if(id===S.listId && unsubItems){ refresh(true); return; }
   S.listId=id; S.items=[]; saveIdentity();
   if(unsubItems){ try{unsubItems();}catch(e){} unsubItems=null; }
   if(S.dbOk){
