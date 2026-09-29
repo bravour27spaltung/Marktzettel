@@ -169,6 +169,37 @@ nicht perfekt – kurz gegenprüfen lohnt sich. Eine KI-gestützte Auslese
 wie in der ursprünglichen Claude-Version ist hier bewusst nicht mehr
 enthalten, da sie einen eigenen, kostenpflichtigen KI-Zugang bräuchte.
 
+## Automatisches Deployment (GitHub Actions)
+
+Damit `index.html`-Änderungen nicht mehr manuell per `firebase deploy`
+vom eigenen Rechner veröffentlicht werden müssen, deployt eine GitHub
+Action (`.github/workflows/firebase-hosting-deploy.yml`) das Hosting
+automatisch bei jedem Push auf `main`. Cloud Functions und
+Firestore-Regeln sind bewusst ausgenommen und bleiben ein manueller
+Schritt (`firebase deploy --only functions,firestore:rules`), da sie
+seltener und mit mehr Bedacht geändert werden.
+
+Einmalige Einrichtung:
+
+1. In der [Google Cloud Console](https://console.cloud.google.com/iam-admin/serviceaccounts)
+   das Firebase-Projekt auswählen (`marktzettel-5fcb0`), einen neuen
+   Dienstkonto ("Service Account") anlegen, z. B. Name
+   `github-actions-deploy`.
+2. Dem Dienstkonto die Rolle **Firebase Hosting Admin** zuweisen (unter
+   "IAM & Verwaltung" → das Dienstkonto suchen → "Rolle hinzufügen").
+3. Beim Dienstkonto unter "Schlüssel" → "Schlüssel hinzufügen" →
+   "Neuen Schlüssel erstellen" → **JSON** wählen. Es wird eine
+   `.json`-Datei heruntergeladen.
+4. Im GitHub-Repo unter **Settings → Secrets and variables → Actions →
+   New repository secret**:
+   - Name: `FIREBASE_SERVICE_ACCOUNT_MARKTZETTEL_5FCB0`
+   - Value: den kompletten Inhalt der heruntergeladenen JSON-Datei
+     einfügen.
+5. Fertig. Ab jetzt reicht `git push origin main` – die Seite wird
+   automatisch innerhalb weniger Minuten aktualisiert, auch ohne dass
+   der eigene Rechner dafür an sein muss. Den Fortschritt sieht man im
+   GitHub-Repo unter dem Reiter **Actions**.
+
 ## Fehlerbehebung
 
 - **"config.js ist noch nicht ausgefüllt"-Hinweis in der App**: Werte aus
