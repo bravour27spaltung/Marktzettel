@@ -67,9 +67,6 @@ h3{font-family:var(--display);font-weight:600;font-size:.82rem;text-transform:up
 .btn.small{padding:8px 12px;min-height:38px;font-size:.88rem;border-radius:12px}
 .btn.danger{color:var(--danger);border-color:var(--danger)}
 .btn:disabled{opacity:.5;cursor:default}
-.progress{display:flex;align-items:center;gap:10px;margin:4px 0 16px;font-size:.88rem;color:var(--muted);font-weight:600}
-.bar{flex:1;height:6px;border-radius:99px;background:var(--line);overflow:hidden}
-.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s}
 .group{margin-bottom:18px}
 .group>h3{padding-bottom:6px}
 .list{background:var(--surface);border-radius:16px;border:1px solid var(--line);overflow:hidden}
@@ -168,7 +165,6 @@ nav.tabs button.on{color:var(--accent);background:var(--accent-soft)}
 .settings-block .lbl{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .status-line{display:flex;align-items:center;gap:8px;font-size:.9rem}
 .status-line .dot{width:8px;height:8px}
-@media (prefers-reduced-motion:reduce){.bar>i{transition:none}}
 </style>
 </head>
 <body>
@@ -550,20 +546,20 @@ function moveListOrder(id,dir){
 
 function renderList(){
   const open=S.items.filter(i=>!i.done), done=S.items.filter(i=>i.done);
-  const total=S.items.length, pct=total?Math.round(done.length/total*100):0;
+  const total=S.items.length;
   const curList=S.lists.find(l=>l.id===S.listId);
   let h='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 0 10px">'+
     '<h3 style="text-transform:none;letter-spacing:0;font-size:1.05rem;color:var(--ink);font-family:var(--display);font-weight:700">'+esc(curList?curList.name:'Liste')+'</h3>'+
     '<button class="btn ghost small" data-act="manage-aisles">Kategorien</button></div>';
   if(!total){
     h+='<div class="empty"><b>Die Liste ist leer</b>Tippe oben einen Artikel ein, zum Beispiel „2 kg Kartoffeln“, oder füge Zutaten aus einem Rezept hinzu.</div>';
-  } else {
-    h+='<div class="progress"><span>'+done.length+' von '+total+' erledigt</span><div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+  } else if(open.length){
+    h+='<p class="hint" style="margin:0 0 10px">'+open.length+' offen</p>';
   }
   for(const a of S.aisles){
     const g=open.filter(i=>resolveAisle(i)===a.key).sort((x,y)=>x.name.localeCompare(y.name,'de'));
     if(!g.length) continue;
-    h+='<section class="group"><h3>'+esc(a.label)+'</h3><div class="list">'+g.map(rowHtml).join('')+'</div></section>';
+    h+='<section class="group"><h3>'+esc(a.label)+' ('+g.length+')</h3><div class="list">'+g.map(rowHtml).join('')+'</div></section>';
   }
   h+='<section class="group"><div class="head" style="margin-bottom:6px;flex-wrap:wrap;row-gap:8px"><h3>Erledigt'+(done.length?' ('+done.length+')':'')+'</h3>'+
     '<div style="display:flex;align-items:center;gap:10px">'+switchHtml('toggle-done',S.showDone,'Anzeigen')+
